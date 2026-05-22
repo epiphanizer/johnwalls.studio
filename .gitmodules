@@ -1,0 +1,52 @@
+[submodule "cgu_master"]
+	path = cgu_master
+	url = git@github.com:epiphanizer/creativesguideus.git
+	ignore = dirty
+[submodule "seanhalls_master"]
+	path = seanhalls_master
+	url = git@github.com:epiphanizer/seanhalls_master.git
+	ignore = dirty
+[submodule "seanhalls_online"]
+	path = seanhalls_online
+	url = git@github.com:epiphanizer/website.git
+	ignore = dirty
+[submodule "sh_hub"]
+	path = sh_hub
+	url = git@github.com:epiphanizer/sh_hub.git
+	ignore = dirty
+[submodule "appreesh_master/appreesh"]
+	path = appreesh_master/appreesh
+	url = git@github.com:epiphanizer/appreesh-main.git
+	ignore = dirty
+[submodule "clients/followup_master"]
+	path = clients/followup_master
+	url = git@github.com:epiphanizer/followup-final.git
+	ignore = dirty
+[submodule "clients/cluck/cluck"]
+	path = clients/cluck/cluck
+	url = git@bitbucket.org:VerbGarden/cluck-wordpress-2020.git
+	ignore = dirty
+[submodule "clients/neff_master/LeadMeGuideMe"]
+	path = clients/neff_master/LeadMeGuideMe
+	url = git@github.com:epiphanizer/LeadMe-GuideMe.git
+	ignore = dirty
+[submodule "clients/ramone_master/node"]
+	path = clients/ramone_master/node
+	url = git@github.com:epiphanizer/nodebootcamp.git
+	ignore = dirty
+[submodule "clients/ramone_master/occ"]
+	path = clients/ramone_master/occ
+	url = git@github.com:epiphanizer/ramone.git
+	ignore = dirty
+[submodule "clients/tbm_master/connect"]
+	path = clients/tbm_master/connect
+	url = git@github.com:epiphanizer/tbm-chat-app.git
+	ignore = dirty
+[submodule "clients/tbm_master/tbm"]
+	path = clients/tbm_master/tbm
+	url = git@github.com:epiphanizer/tbm-new-website.git
+	ignore = dirty
+[submodule "clients/wcd_master/wcd"]
+	path = clients/wcd_master/wcd
+	url = git@github.com:epiphanizer/World-Cup-Dreams.git
+	ignore = dirty
