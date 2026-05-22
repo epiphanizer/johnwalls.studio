@@ -1,0 +1,10 @@
+{
+	"folders": [
+		{
+			"path": "wcd"
+		}
+	],
+	"settings": {
+		"jira-plugin.workingProject": ""
+	}
+}

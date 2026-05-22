@@ -50,3 +50,9 @@
 	path = clients/wcd_master/wcd
 	url = git@github.com:epiphanizer/World-Cup-Dreams.git
 	ignore = dirty
+[submodule "clients/neff_master/followup/api"]
+	path = clients/neff_master/followup/api
+	url = git@bitbucket.org:prismwp/followup-api.git
+[submodule "clients/neff_master/followup/frontend"]
+	path = clients/neff_master/followup/frontend
+	url = git@bitbucket.org:prismwp/followup-frontend.git

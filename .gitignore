@@ -1,0 +1,7 @@
+.DS_Store
+**/.DS_Store
+
+# Keep /sh focused on the actual Appreesh repo boundary.
+appreesh_master/*
+!appreesh_master/appreesh
+!appreesh_master/appreesh/**

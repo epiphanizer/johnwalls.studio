@@ -1,0 +1,163 @@
+2024-12-14 13:47:21 -0700\tcf27bdc08\tSean Halls\tWorking on attune stuff
+2024-12-14 16:27:47 -0700\tf1e192c09\tSean Halls\twork
+2024-12-15 10:58:35 -0700\tf206b4bbd\tSean Halls\tUpdates to database, etc. as we work thru assessments more.
+2024-12-15 11:43:42 -0700\t94db52505\tSean Halls\tAwesome, just awesome improvements to this website. Assessments now persist in loading. Still an issue with UI there but better. Gets all the way thru payload contract phase and does the frontend thing correctly to denormalize the question_text back into assessment answers so that we can display the question text on the frontend even if the questions change later, etc.
+2024-12-15 11:50:43 -0700\td0b236a08\tSean Halls\tBuilding out some picky things I have
+2024-12-15 12:53:28 -0700\tcfe1130a8\tSean Halls\tAt a really good place with assessments
+2024-12-15 13:11:20 -0700\t8021b4bdd\tSean Halls\tSitewide ui & ux fixes to keep my sanity
+2024-12-15 13:21:57 -0700\tb958f3cf2\tSean Halls\tThink this fixes longstanding sidebar flicker & jump issue. Also giving helper text for attune to right sidebar now
+2024-12-15 15:33:41 -0700\t3553c8346\tSean Halls\tA bunch more work on sidebars, etc.
+2024-12-15 15:39:03 -0700\td6870d2d3\tSean Halls\tmore ui, etc.
+2024-12-15 15:42:24 -0700\t1a3a3702b\tSean Halls\tStyles
+2024-12-15 15:43:36 -0700\t6fd82bf97\tSean Halls\tbuild
+2024-12-15 15:57:08 -0700\t32f2294f7\tSean Halls\tA bunch of work getting everything looking & feeling better. Going to finish dialing in the active workflow and then come back for bug fixes.
+2024-12-15 16:41:41 -0700\te17fde693\tSean Halls\tShould be faster, beter.
+2024-12-15 18:02:20 -0700\t86079fd61\tSean Halls\tBetter sidebars, assessment stuff, dashboard looking great.
+2024-12-15 18:19:55 -0700\te093e1db6\tSean Halls\tA bunch of work on the classes for dialing in the assessments now featuring denormalization. Updates status to ready and handles more dashboard logic for joining session.
+2024-12-15 18:28:03 -0700\t8bc98511b\tSean Halls\tcorrections
+2024-12-15 19:16:38 -0700\tc0f76be88\tSean Halls\tWorking links to the peer server :)
+2024-12-15 23:13:33 -0700\td8a0c0eb8\tSean Halls\tBetter link
+2024-12-15 23:17:35 -0700\t020a770e9\tSean Halls\tThink I've finished most of the wordpress side...
+2024-12-15 23:23:10 -0700\t752b01150\tSean Halls\tCleanup or something
+2024-12-16 00:27:24 -0700\t8e267c28d\tSean Halls\tUpdates
+2024-12-16 00:27:56 -0700\t4b7adaa7a\tSean Halls\tstyles etc.
+2024-12-16 00:44:20 -0700\tee506117e\tSean Halls\tProof of concept working for linking assessments to connect app
+2024-12-16 03:55:01 -0700\t584c56faa\tSean Halls\tBetter ux on attune asssessment
+2024-12-16 04:07:09 -0700\t7f0de8356\tSean Halls\tMore work and cleanup stuff.
+2024-12-16 04:19:31 -0700\t05c4920ab\tSean Halls\tcorrections
+2024-12-16 04:21:56 -0700\t83bdeb86c\tSean Halls\tFixing regression
+2024-12-16 06:24:23 -0700\t32786263d\tSean Halls\tMore stuff all jiving
+2024-12-16 06:30:38 -0700\t058c06a48\tSean Halls\tFinal email stuff
+2024-12-16 06:30:48 -0700\t85b5930f3\tSean Halls\tadjustment
+2024-12-17 13:11:51 -0700\ta8fe7ba7e\tSean Halls\tswitching logic to be safer
+2024-12-20 21:05:31 -0700\t0539182d1\tSean Halls\tstuff
+2024-12-20 21:11:56 -0700\t5c6496607\tSean Halls\ttest
+2024-12-20 21:13:07 -0700\t681bb6385\tSean Halls\ttweak
+2024-12-20 21:13:55 -0700\tc0db0d340\tSean Halls\ttest
+2024-12-20 21:14:18 -0700\t80f5709b2\tSean Halls\ttest
+2024-12-20 21:15:33 -0700\t7e4329aa7\tSean Halls\ttest
+2024-12-20 21:18:51 -0700\t375efe102\tSean Halls\tmenu position
+2024-12-20 21:19:47 -0700\tdf7115407\tSean Halls\ttest
+2024-12-20 21:21:11 -0700\t92e855b06\tSean Halls\tbringing some admin stuff back to see what it looks like
+2024-12-20 21:24:20 -0700\t937dc62dd\tSean Halls\tadmin pages
+2024-12-20 21:25:53 -0700\t204284881\tSean Halls\ttest
+2024-12-20 21:30:12 -0700\tbb346d998\tSean Halls\ttest
+2024-12-20 21:42:37 -0700\t83fd01bc4\tSean Halls\tThink better user roles
+2024-12-20 22:24:08 -0700\t71c1216ee\tSean Halls\tno creepy archive
+2024-12-20 22:26:49 -0700\te0d463a1f\tSean Halls\twoops
+2024-12-20 21:30:53 -0800\tf6179be3e\troot\tUpdates from live
+2024-12-20 22:52:06 -0700\tf40c21513\tSean Halls\ttest
+2024-12-20 23:04:39 -0700\t0a8f8f318\tSean Halls\tfix
+2024-12-20 23:20:36 -0700\t9923ef003\tSean Halls\tFixes
+2024-12-20 23:30:42 -0700\t798b58694\tSean Halls\tBetter email
+2024-12-21 00:07:54 -0700\t0b9b13087\tSean Halls\tA bunch of plugin upgrades
+2024-12-21 01:12:55 -0700\tf0a896273\tSean Halls\tUpdates to plugins
+2024-12-21 01:14:26 -0700\t1edba23f0\tSean Halls\tUpgrades
+2024-12-21 01:14:32 -0700\t22bf4cb7f\tSean Halls\tkilling upgrades
+2024-12-28 09:47:19 -0700\tba8ce733e\tSean Halls\tWork
+2024-12-28 10:40:45 -0700\t8231382ae\tSean Halls\tGood stuff
+2024-12-28 13:05:13 -0700\td93ebc8a5\tSean Halls\tlogic fix
+2024-12-28 13:08:03 -0700\t653851943\tSean Halls\tFont fix on dashboard
+2024-12-28 13:18:55 -0700\t0ef2e827e\tSean Halls\tcorrection omg
+2024-12-28 13:23:44 -0700\tb2e2993ff\tSean Halls\tfix for common-footer
+2024-12-28 13:34:33 -0700\tc6262a69a\tSean Halls\tfixes
+2024-12-28 16:01:29 -0700\ta5bd5ad26\tSean Halls\tWorking somewhat for practitioners I'd say
+2024-12-28 16:28:26 -0700\t946477d2c\tSean Halls\tUpdating home menu for mobile
+2024-12-28 16:33:10 -0700\ta30422fa3\tSean Halls\tfix formenu
+2024-12-28 16:33:45 -0700\tc4d688cb9\tSean Halls\tfix
+2024-12-28 16:43:29 -0700\t3f865904d\tSean Halls\tMore work on dashboard logic, etc.
+2024-12-28 16:43:56 -0700\t2d4a38ca5\tSean Halls\tMore work on dashboard logic, etc.
+2024-12-28 16:58:44 -0700\t1ac95037f\tSean Halls\tWork and corrections
+2025-01-11 12:41:12 -0700\tc900c3b0f\tSean Halls\tFix for sidebar even tho cant fix permalink
+2025-01-11 13:01:31 -0700\tbbfba43ed\tSean Halls\tKilling extra log we don't need
+2025-01-11 13:14:12 -0700\tc01b5cc49\tSean Halls\tCorrection for new slug
+2025-01-12 14:27:25 -0700\ta2675becb\tSean Halls\tMigration that works, fixes, etc..
+2025-01-29 17:41:39 -0800\tf9690888c\troot\tLive server state.
+2025-04-22 11:17:24 -0700\tbf40da93b\tSean Halls\tLatest plugins, etc.
+2025-04-22 11:26:26 -0700\t5563a4775\tSean Halls\tNewsletter & other plugin updates.
+2025-04-22 13:11:39 -0600\tdd9875c43\tSean Halls\tMerge branch 'main' of github.com:epiphanizer/tbm-new-website into attune-final
+2025-04-26 10:12:34 -0600\t6653e5c5c\tSean Halls\tbuild for kev fix
+2025-05-03 18:52:25 -0600\t25bdf243e\tSean Halls\tWorking fix for for create account stuff flow with credentials
+2025-05-03 22:35:20 -0600\t953d2b439\tSean Halls\tA fix for missing logic in attune practitioner dashboard. Maybe fixes everything
+2025-05-10 16:58:23 -0600\tb26496fc0\tSean Halls\tWorking on email logic to email both customer AND practitioner for clarity.
+2025-05-10 17:09:35 -0600\t5b20839bc\tSean Halls\tGiving grace period for attunement
+2025-05-10 17:14:18 -0600\t4fa979a0c\tSean Halls\tdashboard stuff
+2025-05-10 17:26:58 -0600\tfc316a7c0\tSean Halls\tSimplifying qualifying conditions to not have it be quite as strict time wise
+2025-05-10 17:28:20 -0600\t427271902\tSean Halls\tGrace
+2025-05-10 23:26:12 -0600\te055efbb0\tSean Halls\tBetter labling and some cleanup
+2025-05-11 00:05:01 -0600\t2bc03a819\tSean Halls\tA bunch of hooks, etc. for wp-json route to complete an appt.
+2025-05-11 01:04:50 -0600\t44ea3ac34\tSean Halls\tWorking session completion code.
+2025-05-11 13:58:03 -0600\te920e275c\tSean Halls\tlil tweak
+2025-05-11 14:26:55 -0600\t2e286d73e\tSean Halls\tGetting emails working nicer.
+2025-05-11 14:54:21 -0600\t6b491f4c8\tSean Halls\tCleanup of labeling, etc. for practitioner side. Some logic to make sure it doesn't show the wrong thing when the user themselves is a practitioner.
+2025-05-11 15:08:52 -0600\t4e6fb375f\tSean Halls\tMaking the request session link know more about who is host or guest, etc.
+2025-05-11 15:16:00 -0600\t2e63bdd4d\tSean Halls\tConditional rules, cleanup, etc..
+2025-05-11 15:33:13 -0600\tc7e44f6a0\tSean Halls\tWorking logic for feeding either link to people
+2025-05-11 15:39:14 -0600\tb993a61c9\tSean Halls\tCOrrections, etc.
+2025-05-11 16:36:02 -0600\tb0ed3c83d\tSean Halls\tGetting the attune sidebar to jive
+2025-05-11 16:37:12 -0600\tf2996693f\tSean Halls\tIt's a thing of beauty
+2025-05-11 16:37:47 -0600\t4261b38d3\tSean Halls\tkill swap
+2025-06-08 13:51:01 -0600\tdfdb1ed71\tSean Halls\tAdding user reset password to the edit account profile page.
+2025-06-08 15:15:03 -0600\t746430df1\tSean Halls\tMaybe better counting to investigate kevin issue
+2025-06-08 15:33:24 -0600\t2ac1cdeaa\tSean Halls\tBetter switch in dashboard
+2025-06-10 20:34:38 -0600\tef936a76b\tSean Halls\tSome logging, but it does email the vendor.
+2025-07-30 12:25:36 -0700\tae895f1e7\tSean Halls\tPlugin upgrades
+2025-08-21 08:52:47 -0600\t0bc339f31\tSean Halls\tmobile patch
+2025-08-21 09:06:51 -0600\t97bdbf624\tSean Halls\tfix
+2025-08-21 09:07:47 -0600\t86f10fd6d\tSean Halls\tfixing broken mobile reg
+2025-08-22 16:56:40 -0600\t04bd0191d\tSean Halls\tFixing login flow
+2025-08-22 17:28:11 -0600\t536fe18f5\tSean Halls\tBetter UI for the moment
+2025-09-01 20:31:27 -0600\t442443f5c\tSean Halls\tbuild
+2025-09-01 20:33:54 -0600\t20bc0e94f\tSean Halls\treverse
+2025-09-01 20:34:30 -0600\t1e80459bd\tSean Halls\treverse
+2025-09-01 20:35:38 -0600\t6b8568395\tSean Halls\treverse
+2025-09-01 20:36:31 -0600\tabfecdd00\tSean Halls\treverse
+2025-09-01 20:39:41 -0600\te20f85537\tSean Halls\tmonkey patch
+2025-09-01 20:40:24 -0600\t051d30879\tSean Halls\tmonkey patch
+2025-09-01 20:42:27 -0600\tb20ce6cf0\tSean Halls\trearranging
+2025-09-01 20:43:37 -0600\tcb5040d4b\tSean Halls\trearranging
+2025-09-01 20:44:30 -0600\t2d0efafdb\tSean Halls\trearranging
+2025-09-01 20:45:19 -0600\t9185dcdeb\tSean Halls\trearranging
+2025-09-01 20:46:26 -0600\tb7894b9cc\tSean Halls\trearranging
+2025-09-01 20:47:03 -0600\t2cafc0efb\tSean Halls\trearranging
+2025-09-01 20:47:37 -0600\t1ff0a9cf1\tSean Halls\trearranging
+2025-09-01 20:58:10 -0600\t4d131b1fc\tSean Halls\trearranging
+2025-09-01 21:15:31 -0600\tce03625e0\tSean Halls\tat least redirect people to home duh
+2025-09-30 18:03:17 -0600\ta6f8337f2\tSean Halls\tfontawesome dropin
+2025-09-30 18:03:54 -0600\tbbd466157\tSean Halls\tfontawesome dropin
+2025-09-30 18:16:08 -0600\t2e89d2b6f\tSean Halls\trevert
+2025-09-30 18:22:14 -0600\teaa7d2250\tSean Halls\treplace
+2025-10-02 14:13:54 -0700\tcd1603b01\tSean Halls\tUpgrades
+2025-10-12 13:55:22 -0700\t8e6dff27d\tSean Halls\tLatest Server
+2025-10-12 13:58:05 -0700\t5db9ec1e9\tSean Halls\tPlugin updates.
+2025-10-12 14:00:44 -0700\t1af83b8ca\tSean Halls\tPlugin updates.
+2025-10-12 14:04:05 -0700\t313d0ea7f\tSean Halls\tPlugin updates.
+2025-10-13 18:04:20 -0600\t041e508ea\tSean Halls\tUpdating wordpress
+2025-10-16 07:46:54 -0600\tdb76cab4b\tSean Halls\tuser-return values
+2025-10-18 08:28:27 -0600\t9f9119ac3\tSean Halls\tAdding tests per robot
+2025-10-18 08:56:53 -0600\tdcf0b67a8\tSean Halls\tUnit tests
+2025-10-18 08:59:07 -0600\t75e17fed7\tSean Halls\t40% coverage
+2025-10-18 09:07:12 -0600\tf7f1152ab\tSean Halls\tMore tests, etc.
+2025-10-18 09:12:33 -0600\t89e35b574\tSean Halls\tmore test stuff
+2025-10-18 09:37:03 -0600\tac68d0099\tSean Halls\tHit our test coverage goal.
+2025-10-18 09:51:44 -0600\t3acd5976c\tSean Halls\tAdding php unit tests
+2025-10-18 12:17:44 -0400\t6cc1978d4\tSean Halls\tPassing PHP unit tests.
+2025-10-18 12:27:37 -0400\tca2ad3889\tSean Halls\tMore php test coverage
+2025-10-18 11:01:18 -0600\td3458e3de\tSean Halls\tphp unit tests at allegedly 80% coverage" "
+2025-10-18 11:04:27 -0600\t6b2ab8cd7\tSean Halls\tcleanup
+2025-10-18 11:45:35 -0600\tb50e110bf\tSean Halls\tGo robot, go
+2025-10-18 11:55:36 -0600\t35a5df175\tSean Halls\tfinallllyyy t3stssss
+2025-10-18 12:18:51 -0600\t032d36826\tSean Halls\tMore coverage
+2025-10-18 12:37:15 -0600\t4c4a95334\tSean Halls\tmore tests, gonna adjust gateto 60
+2025-10-18 12:57:59 -0600\tafb4b61c5\tSean Halls\tPasses gates
+2025-10-18 13:10:07 -0600\t501a41687\tSean Halls\tKillin these
+2025-10-24 21:37:14 -0600\tb49c7cfca\tSean Halls\tBetter integration into connect
+2025-10-24 21:49:57 -0600\t1d338aa0b\tSean Halls\tbetter admin console
+2025-10-24 22:13:39 -0600\t97fea80a4\tSean Halls\tMore work on admin page
+2025-10-24 21:30:24 -0700\t0efd4fefa\tSean Halls\tUpgrade
+2025-10-24 22:33:19 -0600\t197f32e79\tSean Halls\tMore tests, etc.
+2025-10-24 23:04:08 -0600\tbe7958741\tSean Halls\tMerge branch 'wordpress-update-plugins' of github.com:epiphanizer/tbm-new-website into wordpress-update-cleanup
+2025-10-25 11:02:37 -0600\td3022f734\tSean Halls\tUpdates to admin console page
+2025-10-25 11:14:00 -0600\t03ddf188c\tSean Halls\tUpgrade plugins
+2025-11-11 03:20:35 -0800\te399b61e0\tSean Halls\tlogs
+2025-11-11 04:35:09 -0700\t3d447b7ba\tSean Halls\tMerge pull request #44 from epiphanizer/wordpress-update-plugins

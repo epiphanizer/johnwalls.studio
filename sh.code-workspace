@@ -1,0 +1,25 @@
+{
+	"folders": [
+		{
+			"path": "cgu_master"
+		},
+		{
+			"path": "seanhalls_master"
+		},
+		{
+			"path": "seanhalls_online"
+		},
+		{
+			"path": "sh_hub"
+		},
+		{
+			"path": "clients"
+		},
+		{
+			"path": "appreesh_master"
+		}
+	],
+	"settings": {
+		"jira-plugin.workingProject": ""
+	}
+}
