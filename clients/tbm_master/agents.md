@@ -3,6 +3,7 @@
 ## 1. How to Use This Handbook
 - Start here whenever you load both WordPress ("Site") and Connect worktrees into a single workspace.
 - Skim Section 2 to pick the correct repo before making changes; then open the repo-level guide for deeper details.
+- Read `ARCHITECTURE.md` first when you need a maintained whole-system summary or when a client-portal or estimate workflow needs to speak about TBM at the product-architecture level.
 - Keep this file up to date when cross-service contracts, environment defaults, or shared tooling change.
 
 ## 2. Repo Map and Entry Points
@@ -53,10 +54,11 @@ Maintain UTC timestamps server-side and propagate timezone IDs alongside user in
 
 ## 8. Agent Workflow
 1. Identify surface (Section 3).
-2. Open the matching repo-level guide for deep mechanics.
-3. Trace call graph from trigger to persistence or socket boundary.
-4. Preserve security guards (nonces in WordPress, API key headers in Connect).
-5. Update tests in the same layer you touch (PHPUnit, Jest, integration) and run them before handing work off.
-6. Document noteworthy decisions here if they impact both repos.
+2. Read `ARCHITECTURE.md` if the task spans both surfaces or needs a confident system summary.
+3. Open the matching repo-level guide for deep mechanics.
+4. Trace call graph from trigger to persistence or socket boundary.
+5. Preserve security guards (nonces in WordPress, API key headers in Connect).
+6. Update tests in the same layer you touch (PHPUnit, Jest, integration) and run them before handing work off.
+7. Document noteworthy decisions here if they impact both repos.
 
-_Last updated: 2026-02-01_
+_Last updated: 2026-06-07_
