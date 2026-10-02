@@ -5,3 +5,8 @@
 appreesh_master/*
 !appreesh_master/appreesh
 !appreesh_master/appreesh/**
+
+# Large archives and database backups
+*.tar.gz
+**/backups/*.tar.gz
+
