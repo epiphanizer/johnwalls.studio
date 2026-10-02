@@ -3,23 +3,79 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Namastay · Yoga &amp; Sanctuary · Hilo, Hawaiʻi</title>
-  <meta name="description" content="Namastay (namastay.online · namastay.yoga) — An intentional sanctuary for yoga, conscious movement, and residency in development near Downtown Hilo, Hawaiʻi.">
+  <title>Namastay · Conscious Fashion &amp; Yoga Sanctuary · Hilo, Hawaiʻi</title>
+  <meta name="description" content="Namastay (namastay.online · namastay.yoga) — Conscious fashion atelier &amp; ethical Bangladesh textile imports at namastay.online, and intentional yoga sanctuary in development near Downtown Hilo, Hawaiʻi at namastay.yoga.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@200;300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Montserrat:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+  
+  <script>
+    // Immediate pre-render theme & portal selection to avoid any flash of unstyled content
+    (function () {
+      const urlParams = new URLSearchParams(window.location.search);
+      const forced = urlParams.get("portal") || urlParams.get("theme");
+      const isYoga = forced === "yoga" || forced === "dark" || (window.location.hostname.includes("namastay.yoga") && forced !== "online" && forced !== "light");
+      document.documentElement.className = isYoga ? "theme-dark" : "theme-light";
+    })();
+  </script>
+
   <style>
-    :root {
-      --bg-dark: #0c100e;
-      --bg-mid: #121815;
-      --bg-radial: #17211d;
-      --ink-cream: #f4efe6;
-      --ink-gold: #dfba86;
-      --ink-sage: #9bb7a7;
-      --ink-sand: #d8cbb8;
-      --ink-muted: #8b9991;
-      --glass-bg: rgba(18, 24, 21, 0.65);
-      --glass-border: rgba(223, 186, 134, 0.22);
+    /* Light Theme (Default for namastay.online / Fashion & Bangladesh Textiles) */
+    html.theme-light, body.theme-light {
+      --bg-color: #f8f6f0;
+      --vignette-color: radial-gradient(circle at 50% 50%, transparent 45%, rgba(215, 206, 192, 0.55) 95%);
+      --text-title: #1c1917;
+      --text-sub: #a87932;
+      --text-body: #443e37;
+      --text-muted: #7a7064;
+      --glass-bg: rgba(255, 255, 255, 0.88);
+      --glass-border: rgba(198, 172, 134, 0.45);
+      --card-shadow: 0 24px 60px rgba(125, 105, 80, 0.14), 0 2px 8px rgba(0, 0, 0, 0.04);
+      --pill-bg: rgba(168, 121, 50, 0.08);
+      --pill-border: rgba(168, 121, 50, 0.32);
+      --pill-text: #8c5e1c;
+      --pill-active-bg: #23201d;
+      --pill-active-text: #f8f6f0;
+      --ribbon-bg: rgba(168, 121, 50, 0.10);
+      --ribbon-border: rgba(168, 121, 50, 0.35);
+      --ribbon-text: #825712;
+      --btn-primary-bg: #23201d;
+      --btn-primary-text: #f8f6f0;
+      --btn-primary-border: #23201d;
+      --btn-primary-hover: #a87932;
+      --btn-ghost-border: rgba(35, 32, 29, 0.32);
+      --btn-ghost-text: #23201d;
+      --btn-ghost-hover-bg: rgba(168, 121, 50, 0.1);
+      --breath-accent: #a87932;
+    }
+
+    /* Dark Theme (Default for namastay.yoga / Sanctuary & Movement) */
+    html.theme-dark, body.theme-dark {
+      --bg-color: #0c100e;
+      --vignette-color: radial-gradient(circle at 50% 50%, transparent 40%, rgba(12, 16, 14, 0.85) 95%);
+      --text-title: #f4efe6;
+      --text-sub: #dfba86;
+      --text-body: #d8cbb8;
+      --text-muted: #8b9991;
+      --glass-bg: rgba(16, 22, 19, 0.72);
+      --glass-border: rgba(223, 186, 134, 0.28);
+      --card-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+      --pill-bg: rgba(155, 183, 167, 0.12);
+      --pill-border: rgba(155, 183, 167, 0.35);
+      --pill-text: #9bb7a7;
+      --pill-active-bg: #dfba86;
+      --pill-active-text: #0c100e;
+      --ribbon-bg: rgba(223, 186, 134, 0.10);
+      --ribbon-border: rgba(223, 186, 134, 0.32);
+      --ribbon-text: #eed3af;
+      --btn-primary-bg: #dfba86;
+      --btn-primary-text: #0c100e;
+      --btn-primary-border: #dfba86;
+      --btn-primary-hover: #ecd2ab;
+      --btn-ghost-border: rgba(244, 239, 230, 0.32);
+      --btn-ghost-text: #f4efe6;
+      --btn-ghost-hover-bg: rgba(155, 183, 167, 0.14);
+      --breath-accent: #dfba86;
     }
 
     * {
@@ -32,11 +88,26 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background-color: var(--bg-dark);
-      color: var(--ink-cream);
+      background-color: var(--bg-color);
+      color: var(--text-body);
       font-family: 'Montserrat', sans-serif;
       font-weight: 300;
       -webkit-font-smoothing: antialiased;
+    }
+
+    /* Enable smooth transitions only when user explicitly toggles theme */
+    body.transitions-enabled {
+      transition: background-color 0.4s ease, color 0.4s ease;
+    }
+    body.transitions-enabled .hero-container,
+    body.transitions-enabled .vignette,
+    body.transitions-enabled .brand-title,
+    body.transitions-enabled .brand-sub,
+    body.transitions-enabled .prospect-ribbon,
+    body.transitions-enabled .portal-pill,
+    body.transitions-enabled .btn-zen,
+    body.transitions-enabled .btn-zen-ghost {
+      transition: all 0.35s ease;
     }
 
     #caligraphy-canvas {
@@ -55,7 +126,7 @@
       inset: 0;
       pointer-events: none;
       z-index: 2;
-      background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(12, 16, 14, 0.78) 95%);
+      background: var(--vignette-color);
     }
 
     /* Central Content Overlay */
@@ -68,7 +139,7 @@
       flex-direction: column;
       justify-content: space-between;
       align-items: center;
-      padding: 2.5rem 1.5rem;
+      padding: 2.2rem 1.5rem;
       pointer-events: none;
     }
 
@@ -80,13 +151,13 @@
     .top-bar {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.85rem;
       font-size: 0.75rem;
-      letter-spacing: 0.25em;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
-      color: var(--ink-sage);
-      opacity: 0.88;
-      animation: fadeInDown 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      color: var(--text-muted);
+      opacity: 0.95;
+      animation: fadeInDown 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
     .top-bar__dot {
@@ -94,8 +165,8 @@
       width: 5px;
       height: 5px;
       border-radius: 50%;
-      background-color: var(--ink-gold);
-      box-shadow: 0 0 8px var(--ink-gold);
+      background-color: var(--breath-accent);
+      box-shadow: 0 0 8px var(--breath-accent);
       animation: pulseGlow 3.5s ease-in-out infinite;
     }
 
@@ -105,76 +176,92 @@
       flex-direction: column;
       align-items: center;
       text-align: center;
-      max-width: 680px;
-      padding: 2.2rem 2.5rem;
+      max-width: 710px;
+      padding: 2.2rem 2.6rem;
       background: var(--glass-bg);
       border: 1px solid var(--glass-border);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-radius: 1.5rem;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
-      animation: fadeInUp 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-radius: 1.6rem;
+      box-shadow: var(--card-shadow);
+      animation: fadeInUp 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
     .brand-title {
       font-family: 'Cormorant Garamond', serif;
-      font-size: clamp(2.8rem, 6.5vw, 4.4rem);
+      font-size: clamp(2.8rem, 6.2vw, 4.4rem);
       font-weight: 300;
       letter-spacing: 0.28em;
-      margin-left: 0.28em; /* compensate for letter-spacing offset */
+      margin-left: 0.28em;
       text-transform: uppercase;
-      color: var(--ink-cream);
-      text-shadow: 0 4px 20px rgba(223, 186, 134, 0.18);
+      color: var(--text-title);
+      text-shadow: 0 4px 20px rgba(168, 121, 50, 0.15);
       line-height: 1.1;
     }
 
     .brand-sub {
       font-family: 'Cormorant Garamond', serif;
       font-style: italic;
-      font-size: clamp(1.15rem, 2.4vw, 1.45rem);
-      color: var(--ink-gold);
+      font-size: clamp(1.15rem, 2.3vw, 1.45rem);
+      color: var(--text-sub);
       letter-spacing: 0.08em;
-      margin-top: 0.4rem;
+      margin-top: 0.45rem;
       opacity: 0.95;
     }
 
-    .domain-pills {
+    /* Domain & Mode Switcher Pills */
+    .portal-switcher {
       display: flex;
-      gap: 0.6rem;
+      align-items: center;
+      gap: 0.65rem;
       margin: 1.35rem 0 1.25rem;
       flex-wrap: wrap;
       justify-content: center;
     }
 
-    .domain-pill {
+    .portal-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
       font-size: 0.72rem;
+      font-weight: 500;
       letter-spacing: 0.12em;
-      padding: 0.35rem 0.9rem;
+      padding: 0.42rem 1.1rem;
       border-radius: 9999px;
-      background: rgba(155, 183, 167, 0.12);
-      border: 1px solid rgba(155, 183, 167, 0.35);
-      color: var(--ink-sage);
+      background: var(--pill-bg);
+      border: 1px solid var(--pill-border);
+      color: var(--pill-text);
       text-decoration: none;
-      transition: all 0.3s ease;
+      cursor: pointer;
+      user-select: none;
     }
 
-    .domain-pill:hover {
-      background: rgba(223, 186, 134, 0.2);
-      border-color: var(--ink-gold);
-      color: var(--ink-cream);
+    .portal-pill:hover {
       transform: translateY(-1px);
+      border-color: var(--breath-accent);
+    }
+
+    .portal-pill.active {
+      background: var(--pill-active-bg);
+      color: var(--pill-active-text);
+      border-color: var(--pill-active-bg);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    }
+
+    .portal-pill__icon {
+      font-size: 0.85rem;
     }
 
     .mission-text {
-      font-size: clamp(0.82rem, 1.6vw, 0.92rem);
-      line-height: 1.7;
-      color: var(--ink-sand);
+      font-size: clamp(0.84rem, 1.6vw, 0.94rem);
+      line-height: 1.75;
+      color: var(--text-body);
       margin-bottom: 1.4rem;
-      max-width: 540px;
+      max-width: 590px;
     }
 
     .mission-text strong {
-      color: var(--ink-cream);
+      color: var(--text-title);
       font-weight: 500;
     }
 
@@ -182,15 +269,17 @@
     .prospect-ribbon {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 0.75rem;
-      padding: 0.45rem 1rem;
-      border-radius: 0.6rem;
-      background: rgba(223, 186, 134, 0.08);
-      border: 1px solid rgba(223, 186, 134, 0.3);
-      color: var(--ink-gold);
+      gap: 0.65rem;
+      font-size: 0.76rem;
+      padding: 0.55rem 1.15rem;
+      border-radius: 0.75rem;
+      background: var(--ribbon-bg);
+      border: 1px solid var(--ribbon-border);
+      color: var(--ribbon-text);
       margin-bottom: 1.6rem;
       letter-spacing: 0.04em;
+      text-align: left;
+      line-height: 1.45;
     }
 
     /* Interactive Action Buttons */
@@ -204,50 +293,50 @@
     .btn-zen {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.65rem 1.4rem;
+      gap: 0.55rem;
+      padding: 0.7rem 1.55rem;
       font-size: 0.78rem;
-      font-weight: 400;
+      font-weight: 600;
       letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: var(--bg-dark);
-      background: var(--ink-gold);
-      border: 1px solid var(--ink-gold);
+      color: var(--btn-primary-text);
+      background: var(--btn-primary-bg);
+      border: 1px solid var(--btn-primary-border);
       border-radius: 9999px;
       text-decoration: none;
       cursor: pointer;
-      transition: all 0.35s ease;
-      box-shadow: 0 4px 18px rgba(223, 186, 134, 0.3);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.15);
     }
 
     .btn-zen:hover {
-      background: #ecd2ab;
+      background: var(--btn-primary-hover);
+      border-color: var(--btn-primary-hover);
+      color: #fff;
       transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(223, 186, 134, 0.45);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
     }
 
     .btn-zen-ghost {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.65rem 1.3rem;
+      padding: 0.7rem 1.35rem;
       font-size: 0.78rem;
-      font-weight: 300;
+      font-weight: 500;
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      color: var(--ink-cream);
+      color: var(--btn-ghost-text);
       background: transparent;
-      border: 1px solid rgba(244, 239, 230, 0.25);
+      border: 1px solid var(--btn-ghost-border);
       border-radius: 9999px;
       text-decoration: none;
       cursor: pointer;
-      transition: all 0.3s ease;
     }
 
     .btn-zen-ghost:hover {
-      border-color: var(--ink-sage);
-      color: var(--ink-sage);
-      background: rgba(155, 183, 167, 0.08);
+      border-color: var(--breath-accent);
+      color: var(--breath-accent);
+      background: var(--btn-ghost-hover-bg);
       transform: translateY(-1px);
     }
 
@@ -257,11 +346,20 @@
       justify-content: space-between;
       align-items: center;
       width: 100%;
-      max-width: 900px;
+      max-width: 960px;
       font-size: 0.72rem;
-      color: var(--ink-muted);
+      color: var(--text-muted);
       letter-spacing: 0.08em;
-      animation: fadeInUp 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: fadeInUp 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .bottom-bar a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .bottom-bar a:hover {
+      color: var(--breath-accent);
     }
 
     .breathing-indicator {
@@ -270,17 +368,16 @@
       gap: 0.55rem;
       cursor: pointer;
       user-select: none;
-      transition: color 0.3s ease;
     }
 
     .breathing-indicator:hover {
-      color: var(--ink-gold);
+      color: var(--breath-accent);
     }
 
     .breath-ring {
       width: 14px;
       height: 14px;
-      border: 1px solid var(--ink-gold);
+      border: 1px solid var(--breath-accent);
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -291,14 +388,14 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background-color: var(--ink-gold);
+      background-color: var(--breath-accent);
       animation: breathPulse 8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
     }
 
     /* Keyframe Animations */
     @keyframes fadeInDown {
       from { opacity: 0; transform: translateY(-16px); }
-      to { opacity: 0.88; transform: translateY(0); }
+      to { opacity: 0.95; transform: translateY(0); }
     }
 
     @keyframes fadeInUp {
@@ -307,8 +404,8 @@
     }
 
     @keyframes pulseGlow {
-      0%, 100% { opacity: 0.5; transform: scale(0.9); }
-      50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 12px var(--ink-gold); }
+      0%, 100% { opacity: 0.45; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.15); }
     }
 
     @keyframes breathPulse {
@@ -320,7 +417,7 @@
     @media (max-width: 640px) {
       .hero-container {
         padding: 1.8rem 1.4rem;
-        border-radius: 1.2rem;
+        border-radius: 1.3rem;
       }
       .bottom-bar {
         flex-direction: column;
@@ -341,31 +438,37 @@
     <header class="top-bar">
       <span>Hilo · Hawaiʻi</span>
       <span class="top-bar__dot"></span>
-      <span>Movement &amp; Sanctuary</span>
+      <span id="top-bar-subtitle">Conscious Textiles &amp; Fashion Atelier</span>
     </header>
 
     <div class="hero-container">
       <h1 class="brand-title">NAMASTAY</h1>
-      <p class="brand-sub">breathe in stillness · arrive in flow</p>
+      <p class="brand-sub" id="brand-sub">atelier · conscious textiles · movement wear</p>
 
-      <div class="domain-pills">
-        <a href="https://namastay.online" class="domain-pill">namastay.online</a>
-        <a href="https://namastay.yoga" class="domain-pill">namastay.yoga</a>
-      </div>
+      <!-- Portal / Theme Switcher -->
+      <nav class="portal-switcher" aria-label="Portal Selection">
+        <button id="pill-online" class="portal-pill active" type="button" title="Switch to namastay.online Light Atelier">
+          <span class="portal-pill__icon">🧵</span>
+          <span>namastay.online · Atelier</span>
+        </button>
+        <button id="pill-yoga" class="portal-pill" type="button" title="Switch to namastay.yoga Sanctuary Mode">
+          <span class="portal-pill__icon">🌿</span>
+          <span>namastay.yoga · Sanctuary</span>
+        </button>
+      </nav>
 
-      <p class="mission-text">
-        An intentional sanctuary for <strong>yoga, conscious movement, and restorative residency</strong> in development near <strong>Downtown Hilo, Hawaiʻi</strong>.
-        Cultivating grounded practice, visiting instructor residences, and digital studio experiences.
+      <p class="mission-text" id="mission-text">
+        A conscious fashion &amp; movement wear atelier connecting <strong>ethical fabric artisans &amp; master textile mills in Bangladesh</strong> with intentional design in <strong>Hilo, Hawaiʻi</strong>. Crafting breathable organic cottons, natural linen weaves, and elevated yoga wear engineered for movement and sanctuary.
       </p>
 
-      <div class="prospectu-ribbon prospect-ribbon">
-        <span>🌴</span>
-        <span><strong>Primary Prospect:</strong> Mixed Residential / Commercial Sanctuary (Downtown Hilo)</span>
+      <div class="prospect-ribbon" id="prospect-ribbon">
+        <span id="ribbon-icon">🧵</span>
+        <span id="ribbon-text"><strong>Direct Artisan Sourcing:</strong> Established fabric mill &amp; maker relationships in Bangladesh for ethical textile importing · Hilo design atelier.</span>
       </div>
 
       <div class="actions-row">
-        <a href="mailto:aloha@namastay.online?subject=Namastay%20Hilo%20Sanctuary%20Inquiry" class="btn-zen">
-          <span>Connect &amp; Inquire</span>
+        <a id="btn-primary-action" href="mailto:fashion@namastay.online?subject=Namastay%20Atelier%20%26%20Fabric%20Import%20Inquiry" class="btn-zen">
+          <span id="btn-primary-label">Inquire About Fabrics &amp; Imports</span>
           <span>→</span>
         </a>
         <button id="toggle-flow-btn" class="btn-zen-ghost" type="button">
@@ -375,14 +478,14 @@
     </div>
 
     <footer class="bottom-bar">
-      <div>Sean Halls · Certified Yoga Instructor Track</div>
+      <div id="footer-founder">Sean Halls · Founder &amp; Certified Yoga Instructor Track</div>
       <div class="breathing-indicator" id="breath-hint" title="Breathing cadence guidance">
         <div class="breath-ring">
           <div class="breath-dot"></div>
         </div>
         <span id="breath-label">Pranayama · 4s Inhale / 4s Exhale</span>
       </div>
-      <div>&copy; 2026 Namastay · All rights reserved</div>
+      <div>&copy; 2026 Namastay · <span id="footer-domains"><a href="https://namastay.online">namastay.online</a> · <a href="https://namastay.yoga">namastay.yoga</a></span></div>
     </footer>
   </main>
 
@@ -397,6 +500,7 @@
       window.addEventListener("resize", () => {
         width = canvas.width = window.innerWidth;
         height = canvas.height = window.innerHeight;
+        clearCanvas();
       });
 
       // Flow Modes: 0 = Ensō Zen Circle, 1 = Lemniscate / Infinity Breath, 2 = Fluid Ocean Swell
@@ -409,6 +513,65 @@
         const breathLabel = document.getElementById("breath-label");
         breathLabel.textContent = `Flow: ${modeNames[currentMode]} · Inhale / Exhale`;
       });
+
+      // Portal & Theme State Management
+      // 'online' = Light linen / Fashion & Bangladesh textiles
+      // 'yoga'   = Dark sanctuary / Hilo property prospect & meditation
+      let activePortal = document.documentElement.classList.contains("theme-dark") ? "yoga" : "online";
+
+      const topBarSub = document.getElementById("top-bar-subtitle");
+      const brandSub = document.getElementById("brand-sub");
+      const missionText = document.getElementById("mission-text");
+      const ribbonIcon = document.getElementById("ribbon-icon");
+      const ribbonText = document.getElementById("ribbon-text");
+      const btnPrimary = document.getElementById("btn-primary-action");
+      const btnPrimaryLabel = document.getElementById("btn-primary-label");
+      const pillOnline = document.getElementById("pill-online");
+      const pillYoga = document.getElementById("pill-yoga");
+
+      function applyPortal(portalName, enableTransition) {
+        activePortal = portalName;
+
+        if (enableTransition) {
+          document.body.classList.add("transitions-enabled");
+        }
+
+        if (portalName === "online") {
+          document.documentElement.className = "theme-light";
+          document.body.className = "theme-light" + (enableTransition ? " transitions-enabled" : "");
+          pillOnline.classList.add("active");
+          pillYoga.classList.remove("active");
+
+          topBarSub.textContent = "Conscious Textiles & Fashion Atelier";
+          brandSub.textContent = "atelier · conscious textiles · movement wear";
+          missionText.innerHTML = `A conscious fashion &amp; movement wear atelier connecting <strong>ethical fabric artisans &amp; master textile mills in Bangladesh</strong> with intentional design in <strong>Hilo, Hawaiʻi</strong>. Crafting breathable organic cottons, natural linen weaves, and elevated yoga wear engineered for movement and sanctuary.`;
+          ribbonIcon.textContent = "🧵";
+          ribbonText.innerHTML = `<strong>Direct Artisan Sourcing:</strong> Established fabric mill &amp; maker connections in Bangladesh for ethical textile importing · Hilo design atelier.`;
+          btnPrimary.href = "mailto:fashion@namastay.online?subject=Namastay%20Atelier%20%26%20Fabric%20Import%20Inquiry";
+          btnPrimaryLabel.textContent = "Inquire About Fabrics & Imports";
+        } else {
+          document.documentElement.className = "theme-dark";
+          document.body.className = "theme-dark" + (enableTransition ? " transitions-enabled" : "");
+          pillYoga.classList.add("active");
+          pillOnline.classList.remove("active");
+
+          topBarSub.textContent = "Movement & Sanctuary";
+          brandSub.textContent = "breathe in stillness · arrive in flow";
+          missionText.innerHTML = `An intentional sanctuary for <strong>yoga, conscious movement, and restorative residency</strong> in development near <strong>Downtown Hilo, Hawaiʻi</strong>. Cultivating grounded practice, visiting instructor residences, and digital studio experiences.`;
+          ribbonIcon.textContent = "🌴";
+          ribbonText.innerHTML = `<strong>Primary Prospect:</strong> Mixed Residential / Commercial Sanctuary near Downtown Hilo · Active Acquisition Fundraising.`;
+          btnPrimary.href = "mailto:aloha@namastay.yoga?subject=Namastay%20Hilo%20Sanctuary%20Inquiry";
+          btnPrimaryLabel.textContent = "Connect With Sanctuary";
+        }
+
+        clearCanvas();
+      }
+
+      // Initial apply without transitions so rendering is instantaneous
+      applyPortal(activePortal, false);
+
+      pillOnline.addEventListener("click", () => applyPortal("online", true));
+      pillYoga.addEventListener("click", () => applyPortal("yoga", true));
 
       // Calligraphy Dot Stream Particle Model
       class DotParticle {
@@ -441,13 +604,39 @@
           ctx.beginPath();
           ctx.arc(this.x, this.y, this.radius * (1 + progress * 0.4), 0, Math.PI * 2);
 
-          // Subtle organic coloring: cream, gold, and sage
-          let fill = `rgba(244, 239, 230, ${currentAlpha})`;
-          if (this.hue === 1) fill = `rgba(223, 186, 134, ${currentAlpha * 0.95})`; // Gold
-          if (this.hue === 2) fill = `rgba(155, 183, 167, ${currentAlpha * 0.9})`;  // Sage
+          const isLight = activePortal === "online";
+
+          let fill;
+          let shadow;
+
+          if (isLight) {
+            // Light Atelier palette: Sumi ink charcoal, spun gold silk, and rose terracotta
+            if (this.hue === 1) {
+              fill = `rgba(168, 121, 50, ${currentAlpha * 0.95})`; // Artisan Gold
+              shadow = "rgba(168, 121, 50, 0.35)";
+            } else if (this.hue === 2) {
+              fill = `rgba(162, 108, 92, ${currentAlpha * 0.9})`;  // Rose Terracotta
+              shadow = "rgba(162, 108, 92, 0.3)";
+            } else {
+              fill = `rgba(32, 28, 24, ${currentAlpha * 0.92})`;   // Sumi Ink
+              shadow = "rgba(32, 28, 24, 0.22)";
+            }
+          } else {
+            // Dark Sanctuary palette: Cream, gold, and sage
+            if (this.hue === 1) {
+              fill = `rgba(223, 186, 134, ${currentAlpha * 0.95})`; // Gold
+              shadow = "rgba(223, 186, 134, 0.4)";
+            } else if (this.hue === 2) {
+              fill = `rgba(155, 183, 167, ${currentAlpha * 0.9})`;  // Sage
+              shadow = "rgba(155, 183, 167, 0.3)";
+            } else {
+              fill = `rgba(244, 239, 230, ${currentAlpha})`;        // Cream
+              shadow = "rgba(244, 239, 230, 0.25)";
+            }
+          }
 
           ctx.fillStyle = fill;
-          ctx.shadowColor = this.hue === 1 ? "rgba(223, 186, 134, 0.4)" : "rgba(155, 183, 167, 0.3)";
+          ctx.shadowColor = shadow;
           ctx.shadowBlur = this.radius * 2;
           ctx.fill();
           ctx.restore();
@@ -483,7 +672,6 @@
           // Ensō: Imperfect graceful Zen circle
           const rBase = minDim * 0.28;
           const angle = t * 0.65;
-          // Harmonic wave distortion for handwritten calligraphy feel
           const r = rBase + Math.sin(angle * 3) * 14 + Math.cos(angle * 5) * 8;
           return {
             x: cx + Math.cos(angle) * r,
@@ -508,21 +696,27 @@
         }
       }
 
+      function clearCanvas() {
+        const isLight = activePortal === "online";
+        ctx.fillStyle = isLight ? "#f8f6f0" : "#0c100e";
+        ctx.fillRect(0, 0, width, height);
+      }
+
       function animate() {
         requestAnimationFrame(animate);
 
         time += 0.022;
 
-        // Draw soft fade over previous frame to give natural ink trail persistence
-        ctx.fillStyle = "rgba(12, 16, 14, 0.15)";
+        const isLight = activePortal === "online";
+        // Soft persistent fade for watercolor / ink wash aesthetic
+        ctx.fillStyle = isLight ? "rgba(248, 246, 240, 0.16)" : "rgba(12, 16, 14, 0.15)";
         ctx.fillRect(0, 0, width, height);
 
         // Emit calligraphy dots along the active parametric path
         const pt = getPathPoint(time, currentMode);
 
-        // Brush pressure modulation: mimics breathing stroke width (thick to fine)
-        const breath = Math.sin(time * 0.75) * 0.5 + 0.5; // 0 to 1
-        const mainRadius = 2.0 + breath * 7.5; // 2px to 9.5px brush width
+        const breath = Math.sin(time * 0.75) * 0.5 + 0.5;
+        const mainRadius = 2.0 + breath * 7.5;
 
         // Emit main stroke dot
         particles.push(
@@ -539,7 +733,7 @@
           )
         );
 
-        // Add soft trailing satellite droplets
+        // Satellite droplet dots
         if (Math.random() < 0.45) {
           const spread = mainRadius * 1.6;
           particles.push(
@@ -557,7 +751,7 @@
           );
         }
 
-        // Emit subtle interactive dots if mouse/pointer is active
+        // Pointer interactive dots
         if (mouseActive) {
           particles.push(
             new DotParticle(
@@ -565,7 +759,7 @@
               mouseY + (Math.random() - 0.5) * 12,
               1.5 + Math.random() * 3.5,
               0.65,
-              1, // Gold
+              1,
               0,
               80,
               (Math.random() - 0.5) * 0.8,
@@ -574,7 +768,7 @@
           );
         }
 
-        // Update and draw all active calligraphy dots
+        // Update and draw
         for (let i = particles.length - 1; i >= 0; i--) {
           const p = particles[i];
           p.update();
@@ -585,16 +779,12 @@
           }
         }
 
-        // Cap array size
         if (particles.length > maxParticles) {
           particles.splice(0, particles.length - maxParticles);
         }
       }
 
-      // Initial clean clear
-      ctx.fillStyle = "rgb(12, 16, 14)";
-      ctx.fillRect(0, 0, width, height);
-
+      clearCanvas();
       animate();
     })();
   </script>
