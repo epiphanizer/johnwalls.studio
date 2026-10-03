@@ -99,7 +99,7 @@ cmd_health() {
 EOF
 
   echo -e "\n${BOLD}Public HTTPS Ingress Endpoints:${RESET}"
-  for site in "https://creativesguide.us" "https://appreesh.org" "https://seanhalls.online" "https://christianenglander.com" "https://occ.consulting"; do
+  for site in "https://creativesguide.us" "https://johnwalls.rocks" "https://johnwalls.studio" "https://appreesh.org" "https://seanhalls.online" "https://christianenglander.com" "https://occ.consulting"; do
     code=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "$site" 2>/dev/null || echo "000")
     time=$(curl -s -o /dev/null -w "%{time_total}s" -m 5 "$site" 2>/dev/null || echo "timeout")
     if [ "$code" = "200" ] || [ "$code" = "301" ] || [ "$code" = "302" ]; then

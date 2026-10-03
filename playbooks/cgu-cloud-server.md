@@ -24,6 +24,8 @@
 | Application | Domain | Local Directory | Internal Target | Runtime & Process Manager | Primary Technology |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Creatives Guide Us** | `creativesguide.us`<br>`www.creativesguide.us` | `/var/www/cg` | `http://127.0.0.1:3000` | PM2 (`cgu_master` under user `sean_halls`) | Next.js v16, React, Node.js v20 |
+| **John Walls Rocks** | `johnwalls.rocks`<br>`www.johnwalls.rocks` | `/var/www/cg` | `http://127.0.0.1:3000` (`/johnwalls-rocks`) | PM2 (`cgu_master` under user `sean_halls`) | Next.js v16, React, Host-rewritten |
+| **John Walls Studio** | `johnwalls.studio`<br>`www.johnwalls.studio` | `/var/www/cg` | `http://127.0.0.1:3000` (`/johnwalls-studio`) | PM2 (`cgu_master` under user `sean_halls`) | Next.js v16, React, Host-rewritten |
 | **Appreesh** | `appreesh.org`<br>`www.appreesh.org` | `/var/www/appreesh/appreesh-web` | `http://127.0.0.1:3002` | systemd (`appreesh-web.service`) | Next.js v15, Solana SPL, Framer Motion |
 | **Sean Halls Online** | `seanhalls.online`<br>`www.seanhalls.online` | `/var/www/seanhalls` | Static DocumentRoot `/var/www/seanhalls/build` | Apache2 static file serving | React 18 SPA, Webpack, CSS3 |
 | **Christian Englander** | `christianenglander.com`<br>`www.christianenglander.com` | `/var/www/england` | `http://127.0.0.1:3003` | systemd (`england.service`) | Node.js Express server |
