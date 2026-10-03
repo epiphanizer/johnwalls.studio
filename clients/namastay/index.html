@@ -248,8 +248,32 @@
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
     }
 
-    .portal-pill__icon {
-      font-size: 0.85rem;
+    .portal-pill__bullet {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background-color: currentColor;
+      opacity: 0.45;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+
+    .portal-pill.active .portal-pill__bullet {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+
+    .ribbon-tag {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      background: var(--pill-border);
+      color: var(--text-title);
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .mission-text {
@@ -447,23 +471,23 @@
 
       <!-- Portal / Theme Switcher -->
       <nav class="portal-switcher" aria-label="Portal Selection">
-        <button id="pill-online" class="portal-pill active" type="button" title="Switch to namastay.online Light Atelier">
-          <span class="portal-pill__icon">🧵</span>
+        <button id="pill-online" class="portal-pill active" type="button" title="Switch to namastay.online Atelier">
+          <span class="portal-pill__bullet"></span>
           <span>namastay.online · Atelier</span>
         </button>
-        <button id="pill-yoga" class="portal-pill" type="button" title="Switch to namastay.yoga Sanctuary Mode">
-          <span class="portal-pill__icon">🌿</span>
+        <button id="pill-yoga" class="portal-pill" type="button" title="Switch to namastay.yoga Sanctuary">
+          <span class="portal-pill__bullet"></span>
           <span>namastay.yoga · Sanctuary</span>
         </button>
       </nav>
 
       <p class="mission-text" id="mission-text">
-        A conscious fashion &amp; movement wear atelier connecting <strong>ethical fabric artisans &amp; master textile mills in Bangladesh</strong> with intentional design in <strong>Hilo, Hawaiʻi</strong>. Crafting breathable organic cottons, natural linen weaves, and elevated yoga wear engineered for movement and sanctuary—available online and in-person at our upcoming <strong>Downtown Hilo brick &amp; mortar sanctuary</strong>.
+        A conscious fashion and movement atelier connecting ethical textile artisans in Bangladesh with intentional design in Hilo, Hawaiʻi. Crafting breathable organic cottons, natural linen weaves, and elevated movement wear engineered for practice and sanctuary.
       </p>
 
       <div class="prospect-ribbon" id="prospect-ribbon">
-        <span id="ribbon-icon">🧵</span>
-        <span id="ribbon-text"><strong>Direct Artisan Sourcing &amp; Retail:</strong> Bangladesh fabric mill &amp; maker connections for ethical textile importing · Available online and at the physical Hilo sanctuary boutique.</span>
+        <span class="ribbon-tag" id="ribbon-tag">Sourcing</span>
+        <span id="ribbon-text">Direct ethical textile imports from artisan mills in Bangladesh · Available online and at our forthcoming Hilo sanctuary boutique.</span>
       </div>
 
       <div class="actions-row">
@@ -472,13 +496,13 @@
           <span>→</span>
         </a>
         <button id="toggle-flow-btn" class="btn-zen-ghost" type="button">
-          <span>Change Flow Rhythm</span>
+          <span>Cycle Flow Rhythm</span>
         </button>
       </div>
     </div>
 
     <footer class="bottom-bar">
-      <div id="footer-founder">Sean Halls · Founder &amp; Certified Yoga Instructor Track</div>
+      <div id="footer-founder">Sean Halls · Founder &amp; Certified Yoga Instructor</div>
       <div class="breathing-indicator" id="breath-hint" title="Breathing cadence guidance">
         <div class="breath-ring">
           <div class="breath-dot"></div>
@@ -522,7 +546,7 @@
       const topBarSub = document.getElementById("top-bar-subtitle");
       const brandSub = document.getElementById("brand-sub");
       const missionText = document.getElementById("mission-text");
-      const ribbonIcon = document.getElementById("ribbon-icon");
+      const ribbonTag = document.getElementById("ribbon-tag");
       const ribbonText = document.getElementById("ribbon-text");
       const btnPrimary = document.getElementById("btn-primary-action");
       const btnPrimaryLabel = document.getElementById("btn-primary-label");
@@ -544,9 +568,9 @@
 
           topBarSub.textContent = "Conscious Textiles & Fashion Atelier";
           brandSub.textContent = "atelier · conscious textiles · movement wear";
-          missionText.innerHTML = `A conscious fashion &amp; movement wear atelier connecting <strong>ethical fabric artisans &amp; master textile mills in Bangladesh</strong> with intentional design in <strong>Hilo, Hawaiʻi</strong>. Crafting breathable organic cottons, natural linen weaves, and elevated yoga wear engineered for movement and sanctuary—available online and showcased in-person at our upcoming <strong>Downtown Hilo brick &amp; mortar sanctuary</strong>.`;
-          ribbonIcon.textContent = "🧵";
-          ribbonText.innerHTML = `<strong>Direct Artisan Sourcing &amp; Retail:</strong> Bangladesh fabric mill &amp; maker connections for ethical textile importing · Available online and at the physical Hilo sanctuary boutique.`;
+          missionText.textContent = "A conscious fashion and movement atelier connecting ethical textile artisans in Bangladesh with intentional design in Hilo, Hawaiʻi. Crafting breathable organic cottons, natural linen weaves, and elevated movement wear engineered for practice and sanctuary.";
+          ribbonTag.textContent = "Sourcing";
+          ribbonText.textContent = "Direct ethical textile imports from artisan mills in Bangladesh · Available online and at our forthcoming Hilo sanctuary boutique.";
           btnPrimary.href = "mailto:fashion@namastay.online?subject=Namastay%20Atelier%20%26%20Fabric%20Import%20Inquiry";
           btnPrimaryLabel.textContent = "Inquire About Fabrics & Imports";
         } else {
@@ -557,9 +581,9 @@
 
           topBarSub.textContent = "Movement & Sanctuary";
           brandSub.textContent = "breathe in stillness · arrive in flow";
-          missionText.innerHTML = `An intentional sanctuary for <strong>yoga, conscious movement, and restorative residency</strong> in development near <strong>Downtown Hilo, Hawaiʻi</strong>. Cultivating grounded daily practice, visiting instructor residences, and a physical brick-and-mortar boutique carrying our <strong>Namastay conscious textiles &amp; movement wear imported from Bangladesh</strong>.`;
-          ribbonIcon.textContent = "🌴";
-          ribbonText.innerHTML = `<strong>Primary Prospect:</strong> Mixed Residential / Commercial Sanctuary in Downtown Hilo · Active fundraising for studio, practitioner residences, and brick &amp; mortar apparel boutique.`;
+          missionText.textContent = "An intentional sanctuary for yoga, conscious movement, and restorative residency in development near Downtown Hilo, Hawaiʻi. Cultivating daily practice, visiting teacher residencies, and a physical boutique showcasing Namastay textiles and movement wear.";
+          ribbonTag.textContent = "Sanctuary";
+          ribbonText.textContent = "Downtown Hilo sanctuary initiative · Practice studio, visiting practitioner residences, and physical apparel boutique.";
           btnPrimary.href = "mailto:aloha@namastay.yoga?subject=Namastay%20Hilo%20Sanctuary%20Inquiry";
           btnPrimaryLabel.textContent = "Connect With Sanctuary";
         }
