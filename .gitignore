@@ -1,0 +1,7 @@
+# Build outputs
+engine/build/
+ui/dist/
+ui/node_modules/
+*.o
+*.a
+.DS_Store
