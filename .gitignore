@@ -1,7 +1,23 @@
-# Build outputs
+# Build directories and artifacts
+build/
+**/build/
 engine/build/
+vst/build/
 ui/dist/
 ui/node_modules/
+
+# Binaries and object files
 *.o
 *.a
+*.dylib
+*.vst3
+*.component
+
+# OS & Editor files
 .DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+
+# JUCE submodule / checkout
+vst/JUCE/
