@@ -648,15 +648,15 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
           <span>CLI</span>
         </button>
 
-        {/* Capture Audio & Studio Dispatch */}
+        {/* Capture Audio & Studio Dispatch to johnwalls.studio */}
         <button
           type="button"
           onClick={onOpenCaptureDispatch}
-          className="px-2.5 py-1 rounded bg-[#e6af2e]/15 border border-[#e6af2e]/40 hover:bg-[#e6af2e]/25 text-[#e6af2e] flex items-center gap-1.5 transition text-[11px] font-bold shadow-sm"
-          title="Open Audio Capture & Studio Dispatch to johnwalls.studio"
+          className="px-3 py-1 rounded bg-[#e6af2e]/20 border border-[#e6af2e]/60 hover:bg-[#e6af2e]/35 text-[#e6af2e] flex items-center gap-1.5 transition text-[11px] font-extrabold shadow-[0_0_12px_rgba(230,175,46,0.25)] hover:shadow-[0_0_16px_rgba(230,175,46,0.45)] group"
+          title="Capture Live Audio & Publish to johnwalls.studio with SuperCollider Visuals"
         >
-          <Radio size={12} className="text-[#e6af2e]" />
-          <span>DISPATCH</span>
+          <Radio size={12} className="text-[#e6af2e] animate-pulse group-hover:scale-110 transition-transform" />
+          <span>PUBLISH TO WEB</span>
         </button>
 
         {/* Reset All */}

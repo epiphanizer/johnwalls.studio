@@ -14,7 +14,12 @@ interface VirtualTerminalProps {
 
 const QUICK_COMMANDS = [
   'help',
+  'record',
+  'takes',
+  'publish',
   'status',
+  'transport',
+  'tracks',
   'list pedals',
   'list sensors',
   'preset v-curve',
@@ -110,7 +115,7 @@ export const VirtualTerminal: React.FC<VirtualTerminalProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type command (e.g. 'help', 'status', 'list', 'preset v-curve')... [Enter]"
+            placeholder="Type command (e.g. 'help', 'record', 'takes', 'publish', 'preset v-curve')... [Enter]"
             className="bg-transparent text-white placeholder-slate-600 focus:outline-none flex-1 font-mono text-xs"
           />
         </form>
@@ -207,7 +212,7 @@ export const VirtualTerminal: React.FC<VirtualTerminalProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type command and press Enter..."
+            placeholder="Type command (e.g. 'record start', 'takes', 'publish latest', 'status', 'help')... [Enter]"
             className="flex-1 bg-transparent text-slate-100 font-mono text-xs focus:outline-none"
           />
           <button

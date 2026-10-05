@@ -1162,6 +1162,12 @@ export const App: React.FC = () => {
           '  audio / meters                  Real-time ASCII meters: Peak dB, RMS dB, sidechain & 5 sensors\n' +
           '  rhythm                          Detected rhythm pattern, density/bar, dominant register & state\n' +
           '  stream <on|off>                 Toggle live stream of Ableton events into terminal\n\n' +
+          'AUDIO CAPTURE & WEB PUBLISHING (johnwalls.studio):\n' +
+          '  record / rec [start|stop|status] Capture live audio directly from Ableton master\n' +
+          '  takes / list takes               Inspect all local 24-bit/48kHz recorded audio takes\n' +
+          '  publish [takeId|latest] [title]  Direct ship audio take to johnwalls.studio with SuperCollider visualizer\n' +
+          '  ship [takeId|latest] [title]     Alias for \'publish\'\n' +
+          '  dispatch / publish open          Open tactile Audio Capture & Web Publishing Cockpit modal\n\n' +
           'SUPERCOLLIDER DSP ENGINE:\n' +
           '  sc <boot|kill|status|test|free> Control scsynth audio server with real OSC\n\n' +
           'STUDIO RACK & SIGNAL CHAIN:\n' +
@@ -1172,11 +1178,149 @@ export const App: React.FC = () => {
           '  preset v-curve                                  Apply iconic Mesa 5-band EQ V-curve\n' +
           '  inspect <id|master>                             Route solo oscilloscope to target\n' +
           '  set <id>.<param> <val>                          Adjust pedal/amp parameter\n' +
-          '  list [pedals|modules|sensors|tracks]            Inspect rack, modules, sensors or tracks\n' +
+          '  list [pedals|modules|sensors|tracks|takes]      Inspect rack, modules, sensors, tracks or takes\n' +
           '  routing                                         Open Universal Studio Signal Flow Matrix\n\n' +
           'TERMINAL CONTROLS:\n' +
           '  clear / cls                                     Clear terminal log buffer'
       );
+      return;
+    }
+
+    if (verb === 'record' || verb === 'rec') {
+      const sub = tokens[1]?.toLowerCase();
+      if (!sub || sub === 'status') {
+        stateBridge.getTakeStatus().then((st) => {
+          if (!st) {
+            addLog('output', 'Audio Take Recorder: Not responding.');
+            return;
+          }
+          addLog(
+            'output',
+            `=== ABLETON AUDIO TAKE RECORDER ===\n` +
+              `  Recording:     ${st.isRecording ? '● ACTIVE (RECORDING)' : '⏸ IDLE'}\n` +
+              `  Duration:      ${st.durationSeconds.toFixed(2)}s\n` +
+              `  Current Track: "${st.currentTrackName || telemetry.currentTrackName || 'Master'}"\n` +
+              `  Peak Level:    ${st.peakDb > -60 ? st.peakDb.toFixed(1) + ' dBFS' : '-∞ dBFS'}\n` +
+              `  Auto-Rec:      ${st.autoRecEnabled ? 'ENABLED (Sync with Ableton Play)' : 'DISABLED'}\n\n` +
+              `Commands: 'record start', 'record stop', 'takes', 'publish latest "<title>"', 'dispatch'`
+          );
+        }).catch((err: any) => addLog('error', `Record Status Error: ${err?.message || String(err)}`));
+      } else if (sub === 'start') {
+        const track = tokens.slice(2).join(' ') || telemetry.currentTrackName || 'Master';
+        stateBridge.startRecording(track, 'Ableton Live Session', telemetry.bpm).then((ok) => {
+          if (ok) {
+            addLog(
+              'output',
+              `● RECORDING LIVE AUDIO from "${track}" at ${telemetry.bpm.toFixed(1)} BPM...\n` +
+                `  Writing 24-bit/48kHz WAV directly to local takes archive.\n` +
+                `  Type 'record stop' to finish and prepare for publishing.`
+            );
+          } else {
+            addLog('error', 'Failed to start audio take recording. Check telemetry connection.');
+          }
+        });
+      } else if (sub === 'stop') {
+        stateBridge.stopRecording().then((take) => {
+          if (take) {
+            addLog(
+              'output',
+              `■ RECORDING COMPLETE & FINALIZED.\n` +
+                `  Take ID:   ${take.takeId}\n` +
+                `  Track:     "${take.trackName}"\n` +
+                `  Duration:  ${take.durationSeconds.toFixed(2)}s (${take.barCount} bars)\n` +
+                `  BPM:       ${take.bpm}\n` +
+                `  Peak:      ${take.peakDb.toFixed(1)} dBFS\n\n` +
+                `Ready to ship! Type 'publish latest "${take.trackName} Take"' or 'dispatch' to ship to johnwalls.studio.`
+            );
+          } else {
+            addLog('output', 'Recording stopped. No active take recorded.');
+          }
+        }).catch((err: any) => addLog('error', `Record Stop Error: ${err?.message || String(err)}`));
+      } else {
+        addLog('error', 'Usage: record <start [trackName]|stop|status>');
+      }
+      return;
+    }
+
+    if (verb === 'takes') {
+      stateBridge.getRecentTakes().then((takes) => {
+        if (!takes || takes.length === 0) {
+          addLog('output', '=== AUDIO TAKES ARCHIVE ===\n  No recorded takes yet. Run "record start" to capture Ableton audio.');
+          return;
+        }
+        const lines = takes
+          .map((t, i) => `  [${i + 1}] ${t.takeId} | "${t.trackName}" | ${t.durationSeconds.toFixed(1)}s | ${t.barCount} bars | ${t.bpm} BPM | Peak: ${t.peakDb.toFixed(1)} dB`)
+          .join('\n');
+        addLog(
+          'output',
+          `=== AUDIO TAKES ARCHIVE (${takes.length} takes) ===\n${lines}\n\nType 'publish <takeId> "<title>"' or 'publish latest' to ship to johnwalls.studio.`
+        );
+      }).catch((err: any) => addLog('error', `Takes Error: ${err?.message || String(err)}`));
+      return;
+    }
+
+    if (verb === 'publish' || verb === 'ship' || verb === 'dispatch') {
+      const target = tokens[1]?.toLowerCase();
+      if (!target || target === 'open' || target === 'cockpit' || target === 'modal' || verb === 'dispatch') {
+        setIsCaptureDispatchOpen(true);
+        addLog('output', 'Opened Audio Capture & Web Publishing Cockpit.');
+        return;
+      }
+
+      stateBridge.getRecentTakes().then(async (takes) => {
+        if (!takes || takes.length === 0) {
+          addLog('error', 'No audio takes available to publish. Capture one first with "record start" or click PUBLISH TO WEB.');
+          return;
+        }
+
+        let selectedTake = takes[0];
+        let titleTokensStart = 2;
+
+        if (target === 'latest') {
+          selectedTake = takes[0];
+          titleTokensStart = 2;
+        } else {
+          const match = takes.find((t) => t.takeId.toLowerCase().includes(target));
+          if (match) {
+            selectedTake = match;
+            titleTokensStart = 2;
+          } else {
+            titleTokensStart = 1;
+            selectedTake = takes[0];
+          }
+        }
+
+        const title = tokens.slice(titleTokensStart).join(' ').replace(/^["']|["']$/g, '').trim() ||
+          `${selectedTake.trackName || 'Ableton'} Live Take`;
+
+        addLog(
+          'output',
+          `[1/2] Packaging audio take [${selectedTake.takeId}] ("${title}")...\n` +
+            `[2/2] Transmitting to https://johnwalls.studio/api/johnwalls/publish...`
+        );
+
+        const res = await stateBridge.publishTake(selectedTake.takeId, {
+          title,
+          artist: 'John Walls',
+          description: `Captured live from Ableton Live session ("${selectedTake.trackName}") at ${selectedTake.bpm} BPM.`,
+          visualizerPreset: 'supercollider-lissajous',
+          targetUrl: 'https://johnwalls.studio/api/johnwalls/publish'
+        });
+
+        if (res.ok) {
+          addLog(
+            'output',
+            `✓ TRACK PUBLISHED SUCCESSFULLY TO JOHNWALLS.STUDIO!\n` +
+              `  Title:       ${title}\n` +
+              `  Take ID:     ${selectedTake.takeId}\n` +
+              `  Public URL:  ${res.publicUrl || 'https://johnwalls.studio'}\n` +
+              `  Listen Live: https://johnwalls.studio/studio\n` +
+              `  Visualizer:  SuperCollider Lissajous (Dynamic Audio-Reactive)`
+          );
+        } else {
+          addLog('error', `Publish failed: ${res.error || 'Server error'}`);
+        }
+      }).catch((err: any) => addLog('error', `Publish Error: ${err?.message || String(err)}`));
       return;
     }
 
@@ -1523,6 +1667,16 @@ export const App: React.FC = () => {
             .join('\n');
           addLog('output', `Detected Session Tracks (${tracks.length}):\n${lines || '  (No tracks detected)'}`);
         }).catch((err: any) => addLog('error', `Tracks Error: ${err?.message || String(err)}`));
+      } else if (target === 'takes') {
+        stateBridge.getRecentTakes().then((takes) => {
+          const lines = takes
+            .map(
+              (t, i) =>
+                `  [${i + 1}] ${t.takeId} | "${t.trackName}" | ${t.durationSeconds.toFixed(1)}s (${t.barCount} bars) | ${t.bpm} BPM`
+            )
+            .join('\n');
+          addLog('output', `Recorded Audio Takes (${takes.length}):\n${lines || '  (No takes recorded)'}`);
+        }).catch((err: any) => addLog('error', `Takes Error: ${err?.message || String(err)}`));
       }
       return;
     }
@@ -1622,6 +1776,7 @@ export const App: React.FC = () => {
           onRemoveModule={handleRemoveModule}
           onRenameModule={handleRenameModule}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
+          onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
         />
       </div>
 
@@ -1679,6 +1834,7 @@ export const App: React.FC = () => {
           onSwitchToPedalLab={() => handleSelectWorkspace('pedal_lab', true)}
           onSwitchToSP404={() => handleSelectWorkspace('sp404', true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
+          onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
         />
       )}
 
