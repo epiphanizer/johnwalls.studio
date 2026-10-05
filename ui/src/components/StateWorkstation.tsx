@@ -27,11 +27,15 @@ export interface StateWorkstationProps {
   onSwitchToPedalLab: () => void;
   onSwitchToSP404?: () => void;
   onOpenRoutingModal?: () => void;
+  onOpenCaptureDispatch?: () => void;
 }
 
 const QUICK_COMMANDS = [
   'status',
   'transport',
+  'record',
+  'takes',
+  'publish',
   'tracks',
   'midi',
   'meters',
@@ -55,7 +59,8 @@ export const StateWorkstation: React.FC<StateWorkstationProps> = ({
   onClearLogs,
   onSwitchToPedalLab,
   onSwitchToSP404,
-  onOpenRoutingModal
+  onOpenRoutingModal,
+  onOpenCaptureDispatch
 }) => {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
@@ -372,6 +377,19 @@ export const StateWorkstation: React.FC<StateWorkstationProps> = ({
               </>
             )}
           </button>
+
+          {/* Direct Publish to johnwalls.studio Cockpit */}
+          {onOpenCaptureDispatch && (
+            <button
+              type="button"
+              onClick={onOpenCaptureDispatch}
+              className="px-2.5 py-1 rounded bg-[#e6af2e]/15 hover:bg-[#e6af2e]/30 text-[#e6af2e] font-mono text-xs font-bold transition flex items-center gap-1.5 border border-[#e6af2e]/50 shadow-sm"
+              title="Capture Live Audio & Publish to johnwalls.studio"
+            >
+              <Radio size={12} className="animate-pulse text-[#e6af2e]" />
+              <span>PUBLISH TO WEB</span>
+            </button>
+          )}
 
           <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
 

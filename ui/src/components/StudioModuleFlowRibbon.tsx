@@ -12,7 +12,8 @@ import {
   Check,
   Maximize2,
   Activity,
-  GitBranch
+  GitBranch,
+  Radio
 } from 'lucide-react';
 import { StudioModule, StudioModuleType } from '../types';
 
@@ -26,6 +27,7 @@ interface StudioModuleFlowRibbonProps {
   onRemoveModule: (id: string) => void;
   onRenameModule: (id: string, newTitle: string) => void;
   onOpenRoutingModal?: () => void;
+  onOpenCaptureDispatch?: () => void;
 }
 
 export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = ({
@@ -37,7 +39,8 @@ export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = ({
   onAddModule,
   onRemoveModule,
   onRenameModule,
-  onOpenRoutingModal
+  onOpenRoutingModal,
+  onOpenCaptureDispatch
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -311,6 +314,27 @@ export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = ({
               </div>
             </button>
           </div>
+        )}
+      </div>
+
+      {/* 4. Master Output & Web Dispatch Sink */}
+      <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-slate-800">
+        <ArrowRight size={11} className="text-slate-600" />
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#131622] border border-slate-700/80 text-[10px] text-emerald-400 font-bold shadow-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981]" />
+          <span>OUT</span>
+        </div>
+        <ArrowRight size={11} className="text-slate-600" />
+        {onOpenCaptureDispatch && (
+          <button
+            type="button"
+            onClick={onOpenCaptureDispatch}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#e6af2e]/15 hover:bg-[#e6af2e]/30 text-[#e6af2e] border border-[#e6af2e]/50 hover:border-[#e6af2e] text-[10px] font-extrabold tracking-wide transition shadow-sm group"
+            title="Capture Master Audio & Publish to johnwalls.studio"
+          >
+            <Radio size={11} className="text-[#e6af2e] animate-pulse" />
+            <span>PUBLISH</span>
+          </button>
         )}
       </div>
     </div>

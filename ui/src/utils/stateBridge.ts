@@ -382,6 +382,9 @@ class StateBridge {
       targetUrl?: string;
     }
   ): Promise<{ ok: boolean; message?: string; publicUrl?: string; error?: string }> {
+    const targetUrl = options.targetUrl || 'https://johnwalls.studio/api/johnwalls/publish';
+
+    // 1. Primary: Dispatch via LocalTelemetryServer (local native plugin process)
     try {
       const res = await this.tryFetch('/take/publish', {
         method: 'POST',
@@ -391,15 +394,45 @@ class StateBridge {
           artist: options.artist || 'John Walls',
           description: options.description || '',
           visualizerPreset: options.visualizerPreset || 'supercollider-lissajous',
-          targetUrl: options.targetUrl || 'https://johnwalls.studio/api/johnwalls/publish'
+          targetUrl
         })
       });
-      const data = await res.json();
-      return data;
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.ok || data.publicUrl)) {
+          return data;
+        }
+      }
     } catch (err) {
+      console.warn('LocalTelemetryServer publish attempt returned error, trying direct web fallback:', err);
+    }
+
+    // 2. Direct Web Fallback: Fetch audio WAV blob from local telemetry server and POST multipart directly
+    try {
+      const audioUrl = this.getAudioTakeUrl(takeId);
+      const audioRes = await fetch(audioUrl);
+      if (!audioRes.ok) {
+        throw new Error(`Failed to load audio take file (${audioRes.status})`);
+      }
+      const audioBlob = await audioRes.blob();
+      const formData = new FormData();
+      formData.append('audio', audioBlob, `${takeId}.wav`);
+      formData.append('id', takeId);
+      formData.append('title', options.title);
+      formData.append('artist', options.artist || 'John Walls');
+      formData.append('description', options.description || '');
+      formData.append('visualizerPreset', options.visualizerPreset || 'supercollider-lissajous');
+
+      const publishRes = await fetch(targetUrl, {
+        method: 'POST',
+        body: formData
+      });
+      const publishData = await publishRes.json();
+      return publishData;
+    } catch (fallbackErr) {
       return {
         ok: false,
-        error: err instanceof Error ? err.message : 'Publish connection error'
+        error: fallbackErr instanceof Error ? fallbackErr.message : 'Publish connection error'
       };
     }
   }
