@@ -60,7 +60,7 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
 
       if (takes.length > 0 && !selectedTake) {
         setSelectedTake(takes[0]);
-        setPublishTitle(takes[0].trackName + ' Pass');
+        setPublishTitle(takes[0].trackName ? `${takes[0].trackName} Take` : 'Live Take');
       }
     };
 
@@ -78,7 +78,7 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
       const finished = await stateBridge.stopRecording();
       if (finished) {
         setSelectedTake(finished);
-        setPublishTitle(finished.trackName + ' Pass');
+        setPublishTitle(finished.trackName ? `${finished.trackName} Take` : 'Live Take');
       }
     } else {
       await stateBridge.startRecording(currentTrackName, 'Ableton Session', currentBpm);
@@ -412,7 +412,7 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
                       rows={2}
                       value={publishDesc}
                       onChange={(e) => setPublishDesc(e.target.value)}
-                      placeholder="Ableton Live master bus pass through Mesa Mark III and SP-404 vinyl sim..."
+                      placeholder="Optional session notes (leave blank if none)..."
                       className="w-full bg-[#0d1017] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                     />
                   </div>
