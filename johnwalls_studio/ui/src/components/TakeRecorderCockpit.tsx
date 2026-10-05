@@ -395,11 +395,20 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
                       <option value="supercollider-lissajous">
                         SuperCollider Lissajous (Dual-Vector Phosphor Scope)
                       </option>
+                      <option value="golden-mandala">
+                        Golden Mandala (Sacred Geometry & Feedback)
+                      </option>
                       <option value="spectral-waterfall">
                         Spectral Harmonic Waterfall (3D Ribbons)
                       </option>
+                      <option value="acid-kaleidoscope">
+                        Acid Kaleidoscope (Psychedelic Prism)
+                      </option>
                       <option value="sumi-ink-pulse">
                         Archival Sumi-e Ink Pulse (Sumi Dynamics)
+                      </option>
+                      <option value="solar-flare-warp">
+                        Solar Flare Warp (Molten Corona)
                       </option>
                     </select>
                   </div>
