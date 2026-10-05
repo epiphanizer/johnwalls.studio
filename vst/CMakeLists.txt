@@ -35,6 +35,7 @@ target_sources(johnwalls_studio PRIVATE
     Source/SuperColliderManager.cpp
     Source/ReactiveMidiEngine.cpp
     Source/SP404Engine.cpp
+    Source/AudioTakeRecorder.cpp
     "${ENGINE_DIR}/src/dsp_nodes.cpp"
     "${ENGINE_DIR}/src/pedal_rack.cpp"
     "${ENGINE_DIR}/src/feature_extractor.cpp"

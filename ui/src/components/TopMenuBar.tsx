@@ -43,6 +43,7 @@ interface TopMenuBarProps {
   onOpenWorkspaceModal?: () => void;
   onOpenPedalLibrary?: () => void;
   onOpenRoutingModal?: () => void;
+  onOpenCaptureDispatch?: () => void;
 }
 
 export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
@@ -67,7 +68,8 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
   onSelectWorkspace,
   onOpenWorkspaceModal,
   onOpenPedalLibrary,
-  onOpenRoutingModal
+  onOpenRoutingModal,
+  onOpenCaptureDispatch
 }) => {
   const [openMenu, setOpenMenu] = useState<'library' | 'routing' | 'inspect' | 'sensors' | null>(null);
   const [savePatchName, setSavePatchName] = useState('');
@@ -644,6 +646,17 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
         >
           <Terminal size={12} />
           <span>CLI</span>
+        </button>
+
+        {/* Capture Audio & Studio Dispatch */}
+        <button
+          type="button"
+          onClick={onOpenCaptureDispatch}
+          className="px-2.5 py-1 rounded bg-[#e6af2e]/15 border border-[#e6af2e]/40 hover:bg-[#e6af2e]/25 text-[#e6af2e] flex items-center gap-1.5 transition text-[11px] font-bold shadow-sm"
+          title="Open Audio Capture & Studio Dispatch to johnwalls.studio"
+        >
+          <Radio size={12} className="text-[#e6af2e]" />
+          <span>DISPATCH</span>
         </button>
 
         {/* Reset All */}

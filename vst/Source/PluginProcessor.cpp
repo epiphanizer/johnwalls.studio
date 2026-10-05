@@ -142,6 +142,7 @@ void JohnwallsStudioAudioProcessor::prepareToPlay(double sampleRate, int samples
     m_rack.prepare(sampleRate, static_cast<size_t>(samplesPerBlock));
     m_extractor.prepare(sampleRate, static_cast<size_t>(samplesPerBlock));
     m_sp404Engine.prepare(sampleRate, samplesPerBlock);
+    m_takeRecorder.prepare(sampleRate, samplesPerBlock);
     m_reactive.reset();
 }
 
@@ -387,6 +388,13 @@ void JohnwallsStudioAudioProcessor::processBlock(juce::AudioBuffer<float>& buffe
     const float rmsDb = (rms > 1e-4f) ? 20.0f * std::log10(rms) : -96.0f;
     m_peakDb.store(peakDb, std::memory_order_relaxed);
     m_rmsDb.store(rmsDb, std::memory_order_relaxed);
+
+    // Direct Take Recorder for Ableton Live sessions
+    m_takeRecorder.processBlock(mainOutputBus,
+                                m_isPlaying.load(std::memory_order_relaxed),
+                                static_cast<double>(m_currentBpm.load(std::memory_order_relaxed)),
+                                m_barNumber.load(std::memory_order_relaxed),
+                                static_cast<double>(m_ppqPosition.load(std::memory_order_relaxed)));
 }
 
 void JohnwallsStudioAudioProcessor::setParameterFromUI(const juce::String& paramId, float value) {

@@ -9,6 +9,7 @@ import { StateWorkstation } from './components/StateWorkstation';
 import { StudioWorkspaceModal, StudioWorkspace } from './components/StudioWorkspaceModal';
 import { PedalLibraryModal } from './components/PedalLibraryModal';
 import { StudioRoutingModal } from './components/StudioRoutingModal';
+import { TakeRecorderCockpit } from './components/TakeRecorderCockpit';
 import { audioEngine } from './components/AudioEngineBridge';
 import { sp404AudioEngine } from './components/SP404AudioEngine';
 import { stateBridge } from './utils/stateBridge';
@@ -216,6 +217,7 @@ export const App: React.FC = () => {
   const [isPedalLibraryOpen, setIsPedalLibraryOpen] = useState<boolean>(false);
   const [preselectedPedalToSaveId, setPreselectedPedalToSaveId] = useState<string | null>(null);
   const [isRoutingModalOpen, setIsRoutingModalOpen] = useState<boolean>(false);
+  const [isCaptureDispatchOpen, setIsCaptureDispatchOpen] = useState<boolean>(false);
 
   useEffect(() => {
     try {
@@ -1606,6 +1608,7 @@ export const App: React.FC = () => {
           onOpenWorkspaceModal={() => setIsWorkspaceModalOpen(true)}
           onOpenPedalLibrary={() => setIsPedalLibraryOpen(true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
+          onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
         />
 
         {/* Global Studio Signal Flow Ribbon */}
@@ -1727,6 +1730,14 @@ export const App: React.FC = () => {
         bpm={telemetry.bpm}
         barNumber={telemetry.barNumber}
         isPlaying={telemetry.isPlaying}
+      />
+
+      {/* Direct Ableton Live Audio Capture & Web Dispatch Cockpit */}
+      <TakeRecorderCockpit
+        isOpen={isCaptureDispatchOpen}
+        onClose={() => setIsCaptureDispatchOpen(false)}
+        currentTrackName={telemetry.currentTrackName || 'Master'}
+        currentBpm={telemetry.bpm}
       />
     </div>
   );

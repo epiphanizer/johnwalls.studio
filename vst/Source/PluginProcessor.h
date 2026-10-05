@@ -6,6 +6,7 @@
 #include "LocalTelemetryServer.h"
 #include "ReactiveMidiEngine.h"
 #include "SP404Engine.h"
+#include "AudioTakeRecorder.h"
 #include <array>
 #include <atomic>
 #include <string>
@@ -90,11 +91,15 @@ public:
     void setSP404Param(const juce::String& paramName, float value);
 
     LocalTelemetryServer& getTelemetryServer() { return m_telemetryServer; }
+    AudioTakeRecorder& getTakeRecorder() noexcept { return m_takeRecorder; }
+    const AudioTakeRecorder& getTakeRecorder() const noexcept { return m_takeRecorder; }
+    float getCurrentBpm() const noexcept { return m_currentBpm.load(std::memory_order_relaxed); }
 
 private:
     PedalRack m_rack;
     FeatureExtractor m_extractor;
     SP404Engine m_sp404Engine;
+    AudioTakeRecorder m_takeRecorder;
     LocalTelemetryServer m_telemetryServer;
 
     std::string m_instanceId;
