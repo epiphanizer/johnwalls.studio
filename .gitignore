@@ -10,3 +10,7 @@ appreesh_master/*
 *.tar.gz
 **/backups/*.tar.gz
 
+# Standalone client repositories and scratch directories
+clients/ramone_master/remote-job-guru/
+clients/ramone_master/remote_jobs/
+

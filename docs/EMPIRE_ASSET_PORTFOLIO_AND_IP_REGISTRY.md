@@ -51,7 +51,7 @@ graph TD
 - **Revolving Credit Card Debt (Amex)**: $12,500.00
 - **Elimination Outcome**: 100% of revolving debt is extinguished upon incoming AR clearance.
 - **Net Liquid Surplus**: **+$4,725.00 to +$7,525.00** unencumbered cash.
-- **Hardware Financing Amortization**: Chase Spark hardware loan is $410.00/mo, pre-funded for 12–18 months by post-payoff reserves.
+- **Hardware Financing Amortization**: ASUS Ascent GX10 6-month equipment note is $1,350.00/mo starting Nov 4, 2026 ($7,959.04 total at 17.99% APR), pre-funded by monthly surplus.
 
 ---
 

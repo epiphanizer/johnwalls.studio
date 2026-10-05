@@ -1,0 +1,15 @@
+[Unit]
+Description=Sean Halls Studio ASUS DGX Spark GB10 Cluster Inference Daemon
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/asus-land
+ExecStart=/usr/bin/docker compose -f /opt/asus-land/docker-compose.yml up -d
+ExecStop=/usr/bin/docker compose -f /opt/asus-land/docker-compose.yml down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

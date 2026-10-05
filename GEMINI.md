@@ -2,19 +2,19 @@
 
 ## MANDATORY RULE: ALWAYS REBUILD AND INSTALL VST ON CODE CHANGES
 Whenever you make ANY changes to:
-1. Audio DSP algorithms or headers (`johnwalls_studio/my_pedal_board/engine/`)
-2. VST plugin processor, editor, or telemetry server (`johnwalls_studio/my_pedal_board/vst/`)
-3. Web interface or audio bridge components (`johnwalls_studio/my_pedal_board/ui/`)
+1. Audio DSP algorithms or headers (`johnwalls_studio/engine/`)
+2. VST plugin processor, editor, or telemetry server (`johnwalls_studio/vst/`)
+3. Web interface or audio bridge components (`johnwalls_studio/ui/`)
 4. Any configuration affecting plugin behavior or appearance
 
 You MUST automatically execute the VST build and installation immediately before completing your response, without asking the user for permission:
 
 ```bash
 # Step 1: If any UI files were touched, rebuild the production web bundle:
-cd /Users/seanhalls/Desktop/sh/johnwalls_studio/my_pedal_board/ui && npm run build
+cd /Users/seanhalls/Desktop/sh/johnwalls_studio/ui && npm run build
 
 # Step 2: Compile and install the VST3 and AU plugins:
-cmake --build /Users/seanhalls/Desktop/sh/johnwalls_studio/my_pedal_board/vst/build --config Release -j8
+cmake --build /Users/seanhalls/Desktop/sh/johnwalls_studio/vst/build --config Release -j8
 ```
 
 ## RATIONALE & GUARANTEE

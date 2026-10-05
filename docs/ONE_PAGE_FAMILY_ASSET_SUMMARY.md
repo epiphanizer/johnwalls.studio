@@ -23,7 +23,7 @@ We have zero long-term personal or commercial debt burdens, and our revolving Am
 | **Revolving Card Balance (Amex)** | **($12,500.00)** | **100% WIPED OUT by confirmed receivables** |
 | **Net Post-Payoff Cash Reserves** | **+$4,725 to +$7,525** | **Zero revolving debt remaining; pure cash surplus** |
 
-*Hardware financing (Chase Spark) is a low $410/mo and is pre-funded for 12–18 months by our net surplus alone.*
+*Hardware financing (ASUS Ascent GX10 6-month equipment note) is $1,350/mo starting Nov 4, 2026, and is comfortably pre-funded by our net household surplus.*
 
 ---
 
