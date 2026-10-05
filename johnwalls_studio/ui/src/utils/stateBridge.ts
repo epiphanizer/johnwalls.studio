@@ -298,6 +298,144 @@ class StateBridge {
   public loadSavedSession(): ParsedAbletonSession | null {
     return loadSessionFromStorage();
   }
+
+  // ---- Audio Take Recorder & Studio Dispatch Methods ----
+  public async getTakeStatus(): Promise<TakeRecorderStatus | null> {
+    try {
+      const res = await this.tryFetch('/take/status');
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  }
+
+  public async getRecentTakes(): Promise<AudioTakeMetadata[]> {
+    try {
+      const res = await this.tryFetch('/take/recent');
+      if (res.ok) {
+        const data = await res.json();
+        return data.takes || [];
+      }
+    } catch {}
+    return [];
+  }
+
+  public async startRecording(trackName?: string, projectName?: string, bpm?: number): Promise<boolean> {
+    try {
+      const res = await this.tryFetch('/take/record/start', {
+        method: 'POST',
+        body: JSON.stringify({ trackName, projectName, bpm })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  public async stopRecording(): Promise<AudioTakeMetadata | null> {
+    try {
+      const res = await this.tryFetch('/take/record/stop', {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.take || null;
+      }
+    } catch {}
+    return null;
+  }
+
+  public async setAutoRecEnabled(enabled: boolean): Promise<boolean> {
+    try {
+      const res = await this.tryFetch('/take/auto_rec', {
+        method: 'POST',
+        body: JSON.stringify({ enabled })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  public getAudioTakeUrl(takeId: string): string {
+    return `${this.activeBaseUrl}/take/audio?id=${encodeURIComponent(takeId)}`;
+  }
+
+  public async deleteTake(takeId: string): Promise<boolean> {
+    try {
+      const res = await this.tryFetch(`/take?id=${encodeURIComponent(takeId)}`, {
+        method: 'DELETE'
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  public async publishTake(
+    takeId: string,
+    options: {
+      title: string;
+      artist?: string;
+      description?: string;
+      visualizerPreset?: string;
+      targetUrl?: string;
+    }
+  ): Promise<{ ok: boolean; message?: string; publicUrl?: string; error?: string }> {
+    try {
+      const res = await this.tryFetch('/take/publish', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: takeId,
+          title: options.title,
+          artist: options.artist || 'John Walls',
+          description: options.description || '',
+          visualizerPreset: options.visualizerPreset || 'supercollider-lissajous',
+          targetUrl: options.targetUrl || 'https://johnwalls.studio/api/johnwalls/publish'
+        })
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Publish connection error'
+      };
+    }
+  }
+}
+
+export interface AudioTakeMetadata {
+  takeId: string;
+  trackName: string;
+  projectName: string;
+  fileName: string;
+  filePath: string;
+  fileSizeBytes: number;
+  sampleRate: number;
+  channels: number;
+  bitDepth: number;
+  durationSeconds: number;
+  bpm: number;
+  barCount: number;
+  timeSignature: string;
+  peakDb: number;
+  rmsDb: number;
+  recordedAt: string;
+}
+
+export interface TakeRecorderStatus {
+  isRecording: boolean;
+  autoRecEnabled: boolean;
+  currentTakeId: string;
+  currentTrackName: string;
+  currentProjectName: string;
+  bpm: number;
+  sampleRate: number;
+  samplesRecorded: number;
+  durationSeconds: number;
+  peakDb: number;
+  rmsDb: number;
 }
 
 export const stateBridge = new StateBridge();

@@ -788,6 +788,180 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         return;
     }
 
+    // ---- Audio Take Recorder & Studio Dispatch Endpoints ----
+    if (method == "GET" && path.startsWith("/take/status")) {
+        juce::var st = m_processor.getTakeRecorder().getStatus();
+        juce::String json = juce::JSON::toString(st, false);
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "GET" && path.startsWith("/take/recent")) {
+        juce::Array<juce::var> list = m_processor.getTakeRecorder().getRecentTakes();
+        juce::DynamicObject::Ptr root = new juce::DynamicObject();
+        root->setProperty("takes", list);
+        juce::String json = juce::JSON::toString(juce::var(root.get()), false);
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/take/record/start")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        juce::String defaultTrack = juce::String(m_processor.getTrackName());
+        juce::String trackName = parsed.isObject() ? parsed.getProperty("trackName", defaultTrack).toString() : defaultTrack;
+        juce::String projName = parsed.isObject() ? parsed.getProperty("projectName", "").toString() : "";
+        double bpm = parsed.isObject() ? static_cast<double>(parsed.getProperty("bpm", m_processor.getCurrentBpm())) : static_cast<double>(m_processor.getCurrentBpm());
+        bool ok = m_processor.getTakeRecorder().startRecording(trackName, projName, bpm);
+        juce::String reply = ok ? "{\"ok\":true,\"isRecording\":true}" : "{\"ok\":false,\"error\":\"Failed to open audio writer\"}";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/take/record/stop")) {
+        juce::var take = m_processor.getTakeRecorder().stopRecording();
+        juce::DynamicObject::Ptr root = new juce::DynamicObject();
+        root->setProperty("ok", true);
+        root->setProperty("take", take);
+        juce::String json = juce::JSON::toString(juce::var(root.get()), false);
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/take/auto_rec")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        bool enabled = parsed.isObject() && static_cast<bool>(parsed.getProperty("enabled", true));
+        m_processor.getTakeRecorder().setAutoRecEnabled(enabled);
+        juce::String reply = "{\"ok\":true,\"autoRecEnabled\":" + juce::String(enabled ? "true" : "false") + "}";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "GET" && path.startsWith("/take/audio")) {
+        auto queryParam = path.fromFirstOccurrenceOf("id=", false, false);
+        if (queryParam.containsChar('&')) queryParam = queryParam.upToFirstOccurrenceOf("&", false, false);
+        queryParam = juce::URL::removeEscapeChars(queryParam);
+        auto wavFile = m_processor.getTakeRecorder().getTakeAudioFile(queryParam);
+        if (wavFile.existsAsFile()) {
+            juce::MemoryBlock data;
+            wavFile.loadFileAsData(data);
+            juce::String responseHeader =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: audio/wav\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(data.getSize()) + "\r\n"
+                "Connection: close\r\n\r\n";
+            client->write(responseHeader.toRawUTF8(), static_cast<int>(responseHeader.getNumBytesAsUTF8()));
+            client->write(data.getData(), static_cast<int>(data.getSize()));
+            return;
+        }
+        juce::String notFoundJson = "{\"error\":\"Audio file not found\"}";
+        juce::String response =
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(notFoundJson.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + notFoundJson;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "DELETE" && path.startsWith("/take")) {
+        auto queryParam = path.fromFirstOccurrenceOf("id=", false, false);
+        if (queryParam.containsChar('&')) queryParam = queryParam.upToFirstOccurrenceOf("&", false, false);
+        queryParam = juce::URL::removeEscapeChars(queryParam);
+        bool deleted = m_processor.getTakeRecorder().deleteTake(queryParam);
+        juce::String reply = deleted ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"Take not found or could not delete\"}";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/take/publish")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        juce::String takeId = parsed.isObject() ? parsed.getProperty("id", parsed.getProperty("takeId", "")).toString() : "";
+        juce::String title = parsed.isObject() ? parsed.getProperty("title", "").toString() : "";
+        juce::String artist = parsed.isObject() ? parsed.getProperty("artist", "John Walls").toString() : "John Walls";
+        juce::String desc = parsed.isObject() ? parsed.getProperty("description", "").toString() : "";
+        juce::String preset = parsed.isObject() ? parsed.getProperty("visualizerPreset", "supercollider-lissajous").toString() : "supercollider-lissajous";
+        juce::String targetUrl = parsed.isObject() ? parsed.getProperty("targetUrl", "https://johnwalls.studio/api/johnwalls/publish").toString() : "https://johnwalls.studio/api/johnwalls/publish";
+
+        auto wavFile = m_processor.getTakeRecorder().getTakeAudioFile(takeId);
+        auto metaFile = m_processor.getTakeRecorder().getTakeMetaFile(takeId);
+
+        if (!wavFile.existsAsFile()) {
+            juce::String errJson = "{\"ok\":false,\"error\":\"Audio take WAV file not found: " + takeId + "\"}";
+            juce::String response =
+                "HTTP/1.1 404 Not Found\r\n"
+                "Content-Type: application/json\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(errJson.getNumBytesAsUTF8()) + "\r\n"
+                "Connection: close\r\n\r\n" + errJson;
+            client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+            return;
+        }
+
+        juce::String metaStr = metaFile.existsAsFile() ? metaFile.loadFileAsString() : "{}";
+
+        // Dispatch HTTP multipart upload via juce::URL
+        juce::URL url(targetUrl);
+        url = url.withFileToUpload("audio", wavFile, "audio/wav")
+                 .withParameter("id", takeId)
+                 .withParameter("title", title.isEmpty() ? takeId : title)
+                 .withParameter("artist", artist)
+                 .withParameter("description", desc)
+                 .withParameter("visualizerPreset", preset)
+                 .withParameter("metadata", metaStr);
+
+        auto stream = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inPostData)
+                                                .withNumRedirectsToFollow(5)
+                                                .withConnectionTimeoutMs(30000));
+        juce::String serverReply;
+        bool uploadSuccess = false;
+        if (stream != nullptr) {
+            serverReply = stream->readEntireStreamAsString();
+            uploadSuccess = true;
+        } else {
+            serverReply = "{\"ok\":false,\"error\":\"Failed to connect to publishing endpoint: " + targetUrl + "\"}";
+        }
+
+        juce::String response =
+            "HTTP/1.1 " + juce::String(uploadSuccess ? "200 OK" : "502 Bad Gateway") + "\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(serverReply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + serverReply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
     // 404
     juce::String notFound =
         "HTTP/1.1 404 Not Found\r\n" + corsHeaders +
