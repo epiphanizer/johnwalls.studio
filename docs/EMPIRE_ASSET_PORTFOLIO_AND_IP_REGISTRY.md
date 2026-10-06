@@ -1,45 +1,55 @@
 # Sean Halls Enterprise Asset Portfolio & Intellectual Property Master Registry
 
 **Classification**: STRICTLY CONFIDENTIAL // PROPRIETARY IP // INTERNAL USE ONLY  
-**Holding Architecture**: Sean Halls Multi-Division Enterprise (`seanhalls_online`, `cgu_master`, `sh_hub`, `ARTHA`, `Namastay`, `DashboardHC`)  
-**Date of Record**: October 2, 2026  
-**Audited Status**: Green (192 Python unit tests, 118 Vitests, 67 Hub tests, SEC Rule 15c3-5 certified, 17 active commercial contracts)
+**Holding Architecture**: Sean Halls Multi-Division Enterprise (`seanhalls_online`, `cgu_master`, `sh_hub`, `DashboardHC`, `johnwalls_studio`, `ARTHA`)  
+**Date of Record**: October 6, 2026 (Radical Honesty Audit Baseline)  
+**Audited Status**: Grounded Reality — Zero AI Valuation Inflation
 
 ---
 
-## 1. Executive Summary & Holding Architecture
+## 1. Executive Summary & Honest Operating Architecture
 
-The Sean Halls enterprise operates as an integrated holding ecosystem balancing high-margin client software services, proprietary quantitative balance sheet assets, creative media copyrights, healthcare SaaS equity, and physical retreat real estate:
+The enterprise consists of three clear tiers: **Liquid & Tangible Assets** (real money and hardware), **Proven Cash-Flowing Equity** (DashboardHC), and **R&D / Creative Intellectual Property** (software, plugins, screenplays, and algorithms currently in pre-revenue stage):
 
 ```mermaid
 graph TD
-    Parent["Sean & Ishika Halls Holding Estate"]
+    Parent["Sean Halls Enterprise & Estate"]
     
-    Parent --> Div1["ARTHA Quant Division<br/>($3.95M–$6.25M SOTP / $1.50M Collateral)"]
-    Parent --> Div2["Sean Halls Studio / seanhalls.online<br/>(Pay-Per-Outcome Agency / $250k–$450k)"]
-    Parent --> Div3["Namastay Sanctuary & Atelier<br/>(Hilo Mixed-Use Real Estate / $1.20M–$1.50M)"]
-    Parent --> Div4["DashboardHC Healthcare SaaS<br/>(2.0% Permanent Equity / $160k Value)"]
-    Parent --> Div5["Creative Media & Film IP<br/>(Bong Tour Screenplay & Walls/Devine Music)"]
-    Parent --> Div6["sh_hub Local Operating Brain<br/>(Port 3033 / Private SQLite & Postgres)"]
+    Parent --> Real["Tier 1: Tangible & Cash-Flowing Assets<br/>(Real Net Worth: $45k – $75k)"]
+    Parent --> Practice["Tier 2: Solo Consulting Practice<br/>(seanhalls.online: $0 – $25k Goodwill)"]
+    Parent --> RND["Tier 3: Software & Creative R&D Call Options<br/>($0 Book Value / Unmonetized Upside)"]
+
+    Real --> DHC["DashboardHC 2.0% Equity<br/>$24,000/yr Passive Cash Flow<br/>Conservative Illiquid Value: $35k–$60k"]
+    Real --> Gear["Upstairs Hardware Fleet<br/>Net Tangible Equity: ~$5.5k<br/>($13.5k gear minus $7.9k note)"]
+    Real --> Cash["Net Liquid Working Capital<br/>+$4,725 post-AR/debt clearance"]
+
+    Practice --> Studio["Sean Halls Studio / Client Accounts<br/>Clients own code; agency owns tooling<br/>$13.7k confirmed AR in collection"]
+
+    RND --> JWS["johnwalls.studio DSP & VST3/AU<br/>Real native C++ code & web DAW<br/>Book Value: $0 (Pre-revenue)"]
+    RND --> ARTHA["ARTHA Quantitative Trading<br/>Paper simulation on Port 7497<br/>Book Value: $0 ($0 live capital)"]
+    RND --> Media["Creative Media & Screenplays<br/>Walls/Devine masters, Bong Tour spec<br/>Book Value: $0–$5k (Speculative)"]
+    RND --> Hilo["Namastay Hilo Pipeline<br/>Aspirational vision<br/>$0 Owned Equity"]
 
     classDef default fill:#181f33,stroke:#38bdf8,stroke-width:1px,color:#f8fafc;
 ```
 
 ---
 
-## 2. Master Intellectual Property & Asset Register
+## 2. Master Intellectual Property & Asset Register (Grounded Reality)
 
-| Asset ID | Asset Name & Description | Division | Legal Holder | IP Classification | Registration Status | Valuation Low | Valuation High | Annual Yield | Collateral Eligible |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `asset-artha-quant` | **ARTHA Quantitative Trading IP & 109M Bar Warehouse**<br/>50,865 Parquet files, Maya RL Governor (Sharpe 11.27), Rule 15c3-5 gateway | Quant | Sean Halls | Proprietary Software & Data IP | Audited Proprietary | $3,950,000 | $6,250,000 | $480,000 | **YES ($1,500,000)** |
-| `asset-namastay-hilo` | **Namastay Downtown Hilo Sanctuary & Real Estate**<br/>Mixed-use physical commercial/residential retreat & international streaming studio | Real Estate | Sean & Ishika Halls (Namastay LLC) | Real Property & Trademark | Acquisition Pipeline | $1,200,000 | $1,500,000 | $72,000 | **YES ($1,200,000)** |
-| `asset-dashboardhc-equity` | **DashboardHC (Data Services Partners LLC) 2.0% Equity**<br/>Permanent equity in $2M ARR enterprise post-acute care SaaS | Equity | Sean Halls | Equity Security | Operating Agreement Executed | $160,000 | $200,000 | $24,000 | **YES ($160,000)** |
-| `asset-seanhalls-studio` | **Sean Halls Studio Platform & GPU Mesh**<br/>On-prem Apple Silicon GPU cluster, 17 active client contracts, $1.5k/$2.5k ToS | Agency Studio | Sean Halls (seanhalls.online) | Proprietary Software & Systems | Audited Proprietary | $250,000 | $450,000 | $140,000 | No |
-| `asset-bong-tour` | **Bong Tour: Feature Film Screenplay & Media IP**<br/>110-page feature screenplay, treatment & interactive web world | Creative Media | Sean Halls | Literary Copyright | Registered Copyright | $75,000 | $125,000 | $0 (Packaging) | No |
-| `asset-walls-devine-vol1` | **Walls / Devine Volume 1: Sync Master Catalog**<br/>8 commercial master tracks (100% direct sync cleared for film/TV/ads) | Creative Media | Sean Halls & John Devine | Sound Recording Master | Exclusive Master | $40,000 | $60,000 | $12,000 | No |
-| `asset-johnwalls-digital` | **johnwalls.rocks & johnwalls.studio Sound Labs**<br/>Production nodes, master audio archives & generative sound platform | Creative Media | Sean Halls | Trademark & Domain | Active Domain SSL | $35,000 | $65,000 | $8,000 | No |
-| `asset-appreesh-solana` | **Appreesh: Solana Cryptographic Protocol**<br/>Anchor Solana smart contract suite & patron gratitude yield | Creative Media | Sean Halls | Cryptographic Protocol | Audited Proprietary | $50,000 | $100,000 | $0 (Staging) | No |
-| **TOTALS** | **Consolidated Estate Portfolio** | — | — | — | — | **$5,760,000** | **$8,750,000** | **$736,000** | **$2,860,000** |
+| Asset ID | Asset Name & Description | Division | Real Status | Current Book Value | Fair Market / Secondary Value | Verifiable Annual Cash Flow | Bank Collateral Reality |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `asset-dashboardhc-equity` | **DashboardHC (Data Services Partners LLC) 2.0% Equity**<br/>Permanent minority equity in $2M ARR enterprise post-acute care SaaS | Financial Asset | Active & Verified | **$40,000** | **$35,000 – $60,000**<br/>*(applied 40-50% private illiquidity discount)* | **$24,000 / yr**<br/>($6,000/qtr K-1) | **YES ($40,000)** |
+| `asset-hardware-fleet` | **Hardware Fleet & ASUS Ascent GX10 Workstation**<br/>ASUS Ascent GX10 (NVIDIA DGX Spark GB10 128GB VRAM) + Apple Silicon M-series fleet | Tangible Property | Active On-Prem | **$5,541** | **$5,500 – $8,500**<br/>*($13.5k market value minus $7.96k note)* | $0 | **YES ($8,000)** |
+| `asset-working-capital` | **Liquid Cash & Confirmed Receivables**<br/>$3,500 checking + $13,725 confirmed AR minus $12,500 Amex payoff | Liquid Capital | Active | **$4,725** | **$4,725 – $7,525**<br/>*(with potential $2.8k state tax recovery)* | N/A | Cash |
+| `asset-seanhalls-studio` | **Sean Halls Studio Consultancy (`seanhalls.online`)**<br/>Solo consulting practice with 10 active client contracts; clients own deliverable code | Agency Practice | Active Operations | **$0** | **$0 – $25,000**<br/>*(solo dev practices without retainers have minimal transferable value)* | Varies (~$40k–$80k SDE) | **$0** |
+| `asset-johnwalls-studio` | **johnwalls.studio C++ DSP Engine & VST3/AU Plugin**<br/>Native C++ audio engine (Mesa/Vox/stompboxes), JUCE VST plugin, SP-404 MKII web DAW, Ableton telemetry | Creative Software | Production Live | **$0** | **$5,000 – $15,000**<br/>*(software code replacement value only; $0 live revenue today)* | **$0** *(pre-revenue)* | **$0** |
+| `asset-artha-quant` | **ARTHA Quantitative Trading Strategy & Data**<br/>109.2M bar historical warehouse, Maya RL algorithm, IBKR Port 7497 simulation | Quantitative R&D | Paper Simulation | **$0** | **$0 – $10,000**<br/>*(paper simulation with $0 live capital has zero market/lending value)* | **$0** | **$0** |
+| `asset-walls-devine-vol1` | **Walls / Devine Volume 1: Master Tracks**<br/>8 commercial master tracks (100% sync-cleared) | Creative Media | Exclusive Master | **$1,000** | **$1,000 – $5,000**<br/>*(speculative sync placement potential)* | Nominal | **$0** |
+| `asset-bong-tour` | **Bong Tour: Feature Film Spec Screenplay**<br/>110-page spec screenplay draft and treatment | Creative Media | Unoptioned Spec | **$0** | **$0**<br/>*(spec scripts have zero balance sheet value until optioned)* | $0 | **$0** |
+| `asset-appreesh-solana` | **Appreesh: Solana Protocol Code**<br/>Anchor Solana smart contracts | Crypto R&D | Staging / Codebase | **$0** | **$0**<br/>*(unlaunched tokens/contracts have zero balance sheet value)* | $0 | **$0** |
+| `asset-namastay-hilo` | **Namastay Downtown Hilo Pipeline**<br/>Aspirational vision for retreat real estate in Hawaii | Real Estate Target | Unowned Target | **$0** | **$0**<br/>*(future acquisition target; zero current owned equity)* | $0 | **$0** |
+| **TOTALS** | **Consolidated Real Estate & Asset Footprint** | — | — | **$51,266** | **$51,000 – $120,000** | **$24,000 / yr** | **$48,000** |
 
 ---
 
@@ -47,21 +57,23 @@ graph TD
 
 - **Current Liquid Cash**: $3,500.00
 - **Confirmed Incoming Receivables**: $13,725.00 (TBM $7,500, CGU $4,700, Cluck $1,225, Western $300)
-- **Contingent State Recovery**: $2,800.00 (California State Tax Board levy recovery)
-- **Revolving Credit Card Debt (Amex)**: $12,500.00
-- **Elimination Outcome**: 100% of revolving debt is extinguished upon incoming AR clearance.
-- **Net Liquid Surplus**: **+$4,725.00 to +$7,525.00** unencumbered cash.
-- **Hardware Financing Amortization**: ASUS Ascent GX10 6-month equipment note is $1,350.00/mo starting Nov 4, 2026 ($7,959.04 total at 17.99% APR), pre-funded by monthly surplus.
+- **Active Revolving Card Balance (Amex)**: -$12,500.00
+- **Near-Term Liquid Position Post-Payoff**: **+$4,725.00** unencumbered cash buffer (or **+$7,525.00** if the $2,800 CA tax refund arrives).
+- **Equipment Note Liability**: ASUS Ascent GX10 equipment note is $1,350.00/mo starting Nov 4, 2026 ($7,959.04 total at 17.99% APR), pre-funded by monthly consulting surplus and K-1 distributions.
 
 ---
 
-## 4. Multi-Repo Zero-Bloat Separation Policy
+## 4. Grounded Real-World Takeaway
 
-1. **seanhalls_online**: Remains exclusively client-facing, pristine, and unbloated. Zero quantitative libraries, zero DuckDB imports, and zero exposure of internal trading telemetry.
-2. **sh_hub**: Serves as the central private nervous system on Port 3033, recording IP asset registrations in `ip_assets`, orchestrating compute allocations, and preparing client invoice drafts.
-3. **ARTHA (tokonawaki)**: Isolated balance sheet asset division running under SEC Rule 15c3-5 gate controls with Gate 6 fail-closed network port locks.
-4. **Namastay**: Standalone brand and real estate acquisition entity (`namastay.online` / `namastay.yoga`) registered to Sean & Ishika Halls.
-
----
-
-*Master IP registry synchronized with SQLite & PostgreSQL in `sh_hub` on October 2, 2026.*
+1. **What is Real and Bankable**:
+   - The **$24,000/year** passive distributions from DashboardHC (2% equity) is the true bedrock financial asset.
+   - Physical compute hardware provides ~$5,500 in net equity.
+   - Incoming receivables clear all revolving credit card debt and leave ~$4,700 in cash.
+2. **What is Pure Upside / Call Options (Valued at $0 on Balance Sheet)**:
+   - `johnwalls.studio` is an exceptional piece of audio engineering and a working VST plugin, but until musicians buy it or subscribe, it is an active creative project, not an enterprise asset.
+   - `ARTHA` is a paper-trading research project with zero live capital.
+   - `Namastay` is a dream pipeline, not owned real estate.
+   - `Bong Tour` and `Appreesh` are speculative creative assets with zero book value today.
+3. **Total Honest Net Worth**:
+   - **Hard Liquidation Floor**: **~$45,000 – $60,000**
+   - **Going Concern (with agency goodwill)**: **~$75,000 – $120,000**
