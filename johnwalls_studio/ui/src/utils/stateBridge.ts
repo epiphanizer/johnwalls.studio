@@ -436,6 +436,32 @@ class StateBridge {
       };
     }
   }
+
+  public async deployStudioApp(options?: {
+    deployUrl?: string;
+    deployToken?: string;
+  }): Promise<{ ok: boolean; output?: string; publicUrl?: string; error?: string }> {
+    const deployUrl = options?.deployUrl || 'https://johnwalls.studio/api/johnwalls/deploy';
+    const deployToken = options?.deployToken || '';
+
+    try {
+      const res = await this.tryFetch('/studio/deploy', {
+        method: 'POST',
+        body: JSON.stringify({ deployUrl, deployToken })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data;
+      }
+    } catch (err) {
+      console.warn('LocalTelemetryServer deploy trigger error:', err);
+    }
+
+    return {
+      ok: false,
+      error: 'Could not reach local telemetry server. Please run "npm run push" or "make push" in your terminal.'
+    };
+  }
 }
 
 export interface AudioTakeMetadata {

@@ -1167,6 +1167,7 @@ export const App: React.FC = () => {
           '  takes / list takes               Inspect all local 24-bit/48kHz recorded audio takes\n' +
           '  publish [takeId|latest] [title]  Direct ship audio take to johnwalls.studio with SuperCollider visualizer\n' +
           '  ship [takeId|latest] [title]     Alias for \'publish\'\n' +
+          '  push / deploy                    Build and auto-push studio app bundle to https://johnwalls.studio/app\n' +
           '  dispatch / publish open          Open tactile Audio Capture & Web Publishing Cockpit modal\n\n' +
           'SUPERCOLLIDER DSP ENGINE:\n' +
           '  sc <boot|kill|status|test|free> Control scsynth audio server with real OSC\n\n' +
@@ -1321,6 +1322,36 @@ export const App: React.FC = () => {
           addLog('error', `Publish failed: ${res.error || 'Server error'}`);
         }
       }).catch((err: any) => addLog('error', `Publish Error: ${err?.message || String(err)}`));
+      return;
+    }
+
+    if (verb === 'push' || verb === 'deploy' || verb === 'autopush') {
+      const targetUrl = tokens[1] || 'https://johnwalls.studio/api/johnwalls/deploy';
+      addLog(
+        'output',
+        `🚀 [1/3] Kicking off johnwalls.studio auto-push & build pipeline...\n` +
+          `   Target endpoint: ${targetUrl}`
+      );
+      stateBridge
+        .deployStudioApp({ deployUrl: targetUrl })
+        .then((res) => {
+          if (res.ok) {
+            addLog(
+              'output',
+              `✓ STUDIO WEB APP PUSHED & DEPLOYED SUCCESSFULLY!\n` +
+                `  Public URL: ${res.publicUrl || 'https://johnwalls.studio/app'}\n` +
+                `  Output:\n` +
+                (res.output ? res.output.trim().split('\n').map((l) => '    ' + l).join('\n') : '    Deployed production web bundle cleanly.')
+            );
+          } else {
+            addLog(
+              'error',
+              `Push failed: ${res.error || 'Server error'}\n` +
+                (res.output ? `Output:\n${res.output}` : '')
+            );
+          }
+        })
+        .catch((err: any) => addLog('error', `Deploy Error: ${err?.message || String(err)}`));
       return;
     }
 
