@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "desktop": "electron electron/main.cjs"
+    "desktop": "electron electron/main.cjs",
+    "push": "node ../scripts/push-to-studio.mjs",
+    "deploy": "node ../scripts/push-to-studio.mjs"
   },
   "dependencies": {
     "@types/jszip": "^3.4.0",

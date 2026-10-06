@@ -1,4 +1,4 @@
-.PHONY: all engine test build-ui dev-ui clean clean-vst
+.PHONY: all engine test build-ui dev-ui push deploy clean clean-vst
 
 all: test build-ui
 
@@ -14,6 +14,11 @@ dev-ui:
 
 build-ui:
 	cd ui && npm run build
+
+push:
+	node scripts/push-to-studio.mjs
+
+deploy: push
 
 clean:
 	rm -rf engine/build ui/dist

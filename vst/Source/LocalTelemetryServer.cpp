@@ -962,6 +962,53 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         return;
     }
 
+    if (method == "POST" && path.startsWith("/studio/deploy")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        juce::String deployUrl = "https://johnwalls.studio/api/johnwalls/deploy";
+        juce::String deployToken = "";
+        if (parsed.isObject()) {
+            if (parsed.hasProperty("deployUrl")) deployUrl = parsed.getProperty("deployUrl", deployUrl).toString();
+            if (parsed.hasProperty("deployToken")) deployToken = parsed.getProperty("deployToken", "").toString();
+        }
+
+        juce::ChildProcess process;
+        juce::String cmd = "/bin/zsh -lc \"export PATH=\\\"$HOME/.nvm/versions/node/v24.2.0/bin:$PATH:/usr/local/bin:/opt/homebrew/bin\\\" && cd /Users/seanhalls/Desktop/sh/johnwalls_studio && node scripts/push-to-studio.mjs --url '" + deployUrl + "'\"";
+        if (deployToken.isNotEmpty()) {
+            cmd += " --token '" + deployToken + "'";
+        }
+
+        bool started = process.start(cmd);
+        if (started) {
+            juce::String output = process.readAllProcessOutput();
+            auto exitCode = process.getExitCode();
+            bool ok = (exitCode == 0);
+            juce::DynamicObject::Ptr replyObj = new juce::DynamicObject();
+            replyObj->setProperty("ok", ok);
+            replyObj->setProperty("exitCode", static_cast<int>(exitCode));
+            replyObj->setProperty("output", output);
+            replyObj->setProperty("publicUrl", "https://johnwalls.studio/app");
+
+            juce::String json = juce::JSON::toString(juce::var(replyObj.get()), false);
+            juce::String response =
+                "HTTP/1.1 " + juce::String(ok ? "200 OK" : "500 Internal Server Error") + "\r\n"
+                "Content-Type: application/json\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+                "Connection: close\r\n\r\n" + json;
+            client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+            return;
+        } else {
+            juce::String errJson = "{\"ok\":false,\"error\":\"Failed to spawn deploy process\"}";
+            juce::String response =
+                "HTTP/1.1 500 Internal Server Error\r\n"
+                "Content-Type: application/json\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(errJson.getNumBytesAsUTF8()) + "\r\n"
+                "Connection: close\r\n\r\n" + errJson;
+            client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+            return;
+        }
+    }
+
     // 404
     juce::String notFound =
         "HTTP/1.1 404 Not Found\r\n" + corsHeaders +
