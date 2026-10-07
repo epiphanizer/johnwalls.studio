@@ -25,3 +25,6 @@ clean:
 
 clean-vst:
 	rm -rf vst/build
+
+monitor:
+	python3 scripts/studio_monitor.py

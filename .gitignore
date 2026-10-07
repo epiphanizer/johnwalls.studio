@@ -21,3 +21,7 @@ ui/node_modules/
 
 # JUCE submodule / checkout
 vst/JUCE/
+
+# Python cache
+__pycache__/
+*.pyc
