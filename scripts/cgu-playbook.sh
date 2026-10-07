@@ -280,6 +280,66 @@ EOF
   log_success "SSL certificates verification completed!"
 }
 
+provision_staging() {
+  check_ssh_connection
+  SLUG="${1:-}"
+  TYPE="${2:-wordpress}"
+  if [ -z "$SLUG" ]; then
+    log_error "Usage: ./scripts/cgu-playbook.sh provision staging <project-slug> [wordpress|static]"
+    exit 1
+  fi
+  SUBDOMAIN="staging-${SLUG}.seanhalls.online"
+  WEBROOT="/var/www/staging-${SLUG}"
+  DBNAME="wp_stg_${SLUG//-/_}"
+  log_info "Provisioning staging environment '$SUBDOMAIN' ($TYPE) on $HOST..."
+
+  ssh "$HOST" bash -s "$SUBDOMAIN" "$WEBROOT" "$DBNAME" "$TYPE" << 'EOF'
+    set -euo pipefail
+    SUBDOMAIN="$1"
+    WEBROOT="$2"
+    DBNAME="$3"
+    TYPE="$4"
+
+    echo "1. Creating web root: $WEBROOT"
+    sudo mkdir -p "$WEBROOT"
+    sudo chown -R www-data:www-data "$WEBROOT"
+    sudo chmod -R 755 "$WEBROOT"
+
+    if [ "$TYPE" = "wordpress" ]; then
+      echo "2. Initializing MariaDB database: $DBNAME"
+      sudo mysql -e "CREATE DATABASE IF NOT EXISTS \`$DBNAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" || true
+      if [ ! -f "$WEBROOT/index.php" ]; then
+        echo "<?php echo '<h1>WordPress Staging: ' . htmlspecialchars('$SUBDOMAIN') . '</h1><p>GCP Debian 13 Host Ready.</p>'; ?>" | sudo tee "$WEBROOT/index.php" >/dev/null
+      fi
+    else
+      echo "2. Initializing static placeholder"
+      echo "<!DOCTYPE html><html><body><h1>Staging Environment: $SUBDOMAIN</h1></body></html>" | sudo tee "$WEBROOT/index.html" >/dev/null
+    fi
+
+    echo "3. Writing Apache VirtualHost: /etc/apache2/sites-available/${SUBDOMAIN}.conf"
+    sudo tee "/etc/apache2/sites-available/${SUBDOMAIN}.conf" > /dev/null << VHOST
+<VirtualHost *:80>
+    ServerName ${SUBDOMAIN}
+    DocumentRoot ${WEBROOT}
+    <Directory ${WEBROOT}>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    ErrorLog \${APACHE_LOG_DIR}/${SUBDOMAIN}_error.log
+    CustomLog \${APACHE_LOG_DIR}/${SUBDOMAIN}_access.log combined
+</VirtualHost>
+VHOST
+
+    echo "4. Enabling site and reloading Apache"
+    sudo a2ensite "${SUBDOMAIN}.conf" || true
+    sudo systemctl reload apache2 || true
+    echo "✔ Staging site ready: http://${SUBDOMAIN}"
+EOF
+
+  log_success "Staging environment '$SUBDOMAIN' provisioned successfully!"
+}
+
 usage() {
   cat << EOF
 ${BOLD}cgu-playbook.sh — Production Cloud Server Management CLI${RESET}
@@ -338,6 +398,18 @@ case "$ACTION" in
         ;;
       *)
         log_error "Unknown deployment target '$SUB'. Choose: cgu, appreesh, seanhalls, england, all"
+        exit 1
+        ;;
+    esac
+    ;;
+  provision)
+    TARGET="${2:-staging}"
+    case "$TARGET" in
+      staging)
+        provision_staging "${3:-}" "${4:-wordpress}"
+        ;;
+      *)
+        log_error "Unknown provision target '$TARGET'. Choose: staging"
         exit 1
         ;;
     esac

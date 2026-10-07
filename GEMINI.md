@@ -23,3 +23,7 @@ cmake --build /Users/seanhalls/Desktop/sh/johnwalls_studio/vst/build --config Re
   - `/Users/seanhalls/Library/Audio/Plug-Ins/VST3/johnwalls.studio.vst3`
   - `/Users/seanhalls/Library/Audio/Plug-Ins/Components/johnwalls.studio.component`
 - Never prompt or ask the user whether to build; always build so Ableton Live has the latest binary ready to play immediately.
+
+## MANDATORY RULE: HARNESS THE DATABASE AS SINGLE SOURCE OF TRUTH
+- For `bindu` (`bindu.local` / `sh_hub`) and all network operations, never fabricate state or read from unindexed individual files.
+- All network devices, reserved IPs, deferred tasks for ASUS GB10, Artha/Maya 24/7 quant telemetry/signals, and client scoping estimates must be stored and computed directly from the PostgreSQL / SQLite dual-mode database (`src/config/database.ts`).

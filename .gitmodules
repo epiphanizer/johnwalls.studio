@@ -1,14 +1,6 @@
-[submodule "cgu_master"]
-	path = cgu_master
-	url = git@github.com:epiphanizer/creativesguideus.git
-	ignore = dirty
 [submodule "seanhalls_master"]
 	path = seanhalls_master
 	url = git@github.com:epiphanizer/seanhalls_master.git
-	ignore = dirty
-[submodule "seanhalls_online"]
-	path = seanhalls_online
-	url = git@github.com:epiphanizer/website.git
 	ignore = dirty
 [submodule "sh_hub"]
 	path = sh_hub

@@ -1,16 +1,20 @@
 {
 	"folders": [
 		{
-			"name": "cgu_master",
-			"path": "cgu_master"
+			"name": "properties",
+			"path": "../properties"
 		},
 		{
-			"name": "seanhalls_master",
-			"path": "seanhalls_master"
+			"name": "cgu",
+			"path": "../properties/cgu"
 		},
 		{
 			"name": "seanhalls_online",
-			"path": "seanhalls_online"
+			"path": "../properties/seanhalls_online"
+		},
+		{
+			"name": "johnwalls",
+			"path": "../properties/johnwalls"
 		},
 		{
 			"name": "sh_hub",
@@ -19,6 +23,10 @@
 		{
 			"name": "clients",
 			"path": "clients"
+		},
+		{
+			"name": "seanhalls_master",
+			"path": "seanhalls_master"
 		},
 		{
 			"name": "appreesh_master",

@@ -8,8 +8,10 @@ set -euo pipefail
 
 REMOTE_HOST="${1:-cgu}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLACEHOLDER_HTML="${SOURCE_DIR}/clients/namastay/index.html"
-APACHE_CONF="${SOURCE_DIR}/seanhalls_online/deploy/apache/namastay.conf"
+BINDU_DIR="$(cd "${SOURCE_DIR}/.." && pwd)"
+PROPERTIES_DIR="${BINDU_DIR}/properties"
+PLACEHOLDER_HTML="${PROPERTIES_DIR}/namastay/index.html"
+APACHE_CONF="${PROPERTIES_DIR}/seanhalls_online/deploy/apache/namastay.conf"
 
 echo "========================================================================"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Deploying Namastay Placeholders"
@@ -31,9 +33,9 @@ fi
 echo "[1/5] Ensuring remote /var/www/namastay directory exists..."
 ssh "${REMOTE_HOST}" "sudo mkdir -p /var/www/namastay && sudo chown -R seanhalls:seanhalls /var/www/namastay"
 
-echo "[2/5] Syncing soothing animated dot calligraphy HTML screen..."
-scp -q "${PLACEHOLDER_HTML}" "${REMOTE_HOST}:/var/www/namastay/index.html"
-ssh "${REMOTE_HOST}" "sudo chmod 644 /var/www/namastay/index.html && sudo chown -R www-data:www-data /var/www/namastay"
+echo "[2/5] Syncing Namastay Atelier & Sanctuary files (index.html, sanctuary.html, css, js)..."
+scp -rq "${PROPERTIES_DIR}/namastay/"* "${REMOTE_HOST}:/var/www/namastay/"
+ssh "${REMOTE_HOST}" "sudo chmod -R 755 /var/www/namastay && sudo chown -R www-data:www-data /var/www/namastay"
 
 echo "[3/5] Syncing Apache VirtualHost configuration..."
 scp -q "${APACHE_CONF}" "${REMOTE_HOST}:/tmp/namastay.conf"
