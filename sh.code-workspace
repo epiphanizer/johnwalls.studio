@@ -25,10 +25,6 @@
 			"path": "clients"
 		},
 		{
-			"name": "seanhalls_master",
-			"path": "seanhalls_master"
-		},
-		{
 			"name": "appreesh_master",
 			"path": "appreesh_master"
 		}

@@ -1,7 +1,3 @@
-[submodule "seanhalls_master"]
-	path = seanhalls_master
-	url = git@github.com:epiphanizer/seanhalls_master.git
-	ignore = dirty
 [submodule "sh_hub"]
 	path = sh_hub
 	url = git@github.com:epiphanizer/sh_hub.git
