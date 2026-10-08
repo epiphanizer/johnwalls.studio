@@ -9,6 +9,7 @@ void PedalRack::prepare(double sampleRate, size_t maxBlockSize) {
     std::lock_guard<std::recursive_mutex> lock(m_rackMutex);
     m_sampleRate = sampleRate;
     m_maxBlockSize = maxBlockSize;
+    m_masterLimiter.prepare(sampleRate);
     for (auto& node : m_nodes) {
         node->prepare(sampleRate, maxBlockSize);
     }
@@ -16,6 +17,7 @@ void PedalRack::prepare(double sampleRate, size_t maxBlockSize) {
 
 void PedalRack::reset() {
     std::lock_guard<std::recursive_mutex> lock(m_rackMutex);
+    m_masterLimiter.reset();
     for (auto& node : m_nodes) {
         node->reset();
     }
@@ -206,6 +208,9 @@ void PedalRack::processWithLock(AudioBufferView& buffer, std::unique_lock<std::r
             }
         }
     }
+
+    // Apply master trim and analog-modeled soft limiter (-0.3 dBFS ceiling)
+    m_masterLimiter.process(buffer, m_masterTrimLinear.load(std::memory_order_relaxed));
 
     // If master is inspected or no specific node, capture final output
     if (m_inspectedNodeId.empty() || m_inspectedNodeId == "master") {

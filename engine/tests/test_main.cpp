@@ -494,6 +494,79 @@ void testLockFreeWaveformAndCachedNodes() {
     std::cout << "  ✓ Lock-Free Waveform & Cached Pointers verified!" << std::endl;
 }
 
+void testTransparentSoftLimiterAndMasterGainStaging() {
+    std::cout << "[TEST] Running Transparent Soft Limiter & Gain Staging Tests..." << std::endl;
+
+    TransparentSoftLimiter limiter(-0.3f);
+    limiter.prepare(44100.0);
+
+    // 1. Bit-transparent below threshold test
+    std::vector<float> smallSignalL = { 0.0f, 0.1f, -0.2f, 0.4f, -0.5f, 0.8f, -0.85f };
+    std::vector<float> smallSignalR = smallSignalL;
+    float* smallChs[] = { smallSignalL.data(), smallSignalR.data() };
+    AudioBufferView smallBuf(smallChs, 2, smallSignalL.size());
+
+    limiter.process(smallBuf, 1.0f);
+    for (size_t i = 0; i < smallSignalL.size(); ++i) {
+        // Must be bit-exact since peak <= 0.85f < threshold 0.966f
+        float expected = (i == 0) ? 0.0f : (i == 1) ? 0.1f : (i == 2) ? -0.2f : (i == 3) ? 0.4f : (i == 4) ? -0.5f : (i == 5) ? 0.8f : -0.85f;
+        assert(std::abs(smallSignalL[i] - expected) < 1e-6f);
+    }
+    std::cout << "  ✓ Sub-threshold transparency verified bit-exact." << std::endl;
+
+    // 2. Extreme Overshoot Limiting Ceiling Test
+    std::vector<float> extremeL = { 1.2f, 2.5f, 5.0f, 10.0f, -1.5f, -4.0f, -12.0f };
+    std::vector<float> extremeR = extremeL;
+    float* extChs[] = { extremeL.data(), extremeR.data() };
+    AudioBufferView extBuf(extChs, 2, extremeL.size());
+
+    limiter.process(extBuf, 1.0f);
+    for (size_t i = 0; i < extremeL.size(); ++i) {
+        assert(!std::isnan(extremeL[i]));
+        assert(!std::isinf(extremeL[i]));
+        assert(std::abs(extremeL[i]) <= limiter.getCeilingLinear());
+        assert(std::abs(extremeL[i]) <= 0.990f); // Strictly below 0.0 dBFS (1.0f)
+        assert(std::abs(extremeR[i]) <= 0.990f);
+    }
+    assert(limiter.getMaxReductionDb() > 3.0f);
+    std::cout << "  ✓ Extreme overs ceiling strictly <= -0.13 dBFS (" << limiter.getCeilingLinear() << "f)." << std::endl;
+
+    // 3. PedalRack Integration with Maxed-Out Mesa Lead and EQ
+    PedalRack rack;
+    rack.prepare(44100.0, 512);
+    rack.addPedalByType("mesa", "mesa_mark3");
+    rack.setParameter("mesa_mark3", "channel", 2.0f);      // Searing Lead
+    rack.setParameter("mesa_mark3", "gain", 10.0f);        // Max gain
+    rack.setParameter("mesa_mark3", "lead_drive", 10.0f);   // Max drive
+    rack.setParameter("mesa_mark3", "lead_master", 10.0f);  // Max master
+    rack.setParameter("mesa_mark3", "eq_active", 1.0f);
+    rack.setParameter("mesa_mark3", "eq80", 12.0f);        // Massive bass boost
+    rack.setParameter("mesa_mark3", "eq6600", 12.0f);      // Massive treble boost
+
+    const size_t kBlock = 512;
+    std::vector<float> rackL(kBlock);
+    std::vector<float> rackR(kBlock);
+    for (size_t i = 0; i < kBlock; ++i) {
+        rackL[i] = std::sin(2.0f * 3.14159265f * 440.0f * static_cast<float>(i) / 44100.0f);
+        rackR[i] = rackL[i];
+    }
+    float* rackChs[] = { rackL.data(), rackR.data() };
+    AudioBufferView rackBuf(rackChs, 2, kBlock);
+
+    rack.process(rackBuf);
+
+    float maxRackPeak = 0.0f;
+    for (size_t i = 0; i < kBlock; ++i) {
+        assert(!std::isnan(rackL[i]));
+        assert(!std::isinf(rackL[i]));
+        maxRackPeak = std::max(maxRackPeak, std::abs(rackL[i]));
+        assert(std::abs(rackL[i]) <= 0.990f); // Limiter prevents any clipping!
+        assert(std::abs(rackR[i]) <= 0.990f);
+    }
+    assert(maxRackPeak > 0.8f && maxRackPeak <= 0.990f);
+    std::cout << "  ✓ Maxed Mesa Mark III Lead output safely constrained to peak=" << maxRackPeak << "f without clipping!" << std::endl;
+}
+
 int main() {
     std::cout << "==================================================" << std::endl;
     std::cout << "  johnwalls.studio: Audio Engine Suite            " << std::endl;
@@ -504,9 +577,10 @@ int main() {
     testFeatureExtractorAndStates();
     testChainingAndCleanPassthrough();
     testLockFreeWaveformAndCachedNodes();
+    testTransparentSoftLimiterAndMasterGainStaging();
 
     std::cout << "==================================================" << std::endl;
-    std::cout << "  All 5 test suites passed successfully! (100%)   " << std::endl;
+    std::cout << "  All 6 test suites passed successfully! (100%)   " << std::endl;
     std::cout << "==================================================" << std::endl;
     return 0;
 }

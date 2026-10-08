@@ -462,7 +462,7 @@ void MesaMarkNode::process(AudioBufferView& buffer) {
     int ch = static_cast<int>(std::round(m_channel));
     float vol1 = m_gain * 0.1f;
     float leadDrv = m_leadDrive * 0.1f;
-    float masterVol = (ch == 2 ? m_leadMaster : m_master) * 0.12f;
+    float masterVol = (ch == 2 ? m_leadMaster * 0.095f : (ch == 1 ? m_master * 0.105f : m_master * 0.115f));
     bool isSimulClass = (m_simulClass > 0.5f);
     bool eqOn = (m_eqActive > 0.5f);
     bool cabOn = (m_cabEnabled > 0.5f);
@@ -773,7 +773,7 @@ void VoxAC30Node::process(AudioBufferView& buffer) {
     }
 
     float chimeAmount = m_chime * 0.1f;
-    float masterVol = (m_master * 0.14f);
+    float masterVol = (ch == 1 ? m_master * 0.105f : m_master * 0.125f);
     bool cabOn = (m_cabEnabled > 0.5f);
 
     for (size_t i = 0; i < numSamples; ++i) {

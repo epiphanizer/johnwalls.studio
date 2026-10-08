@@ -70,6 +70,27 @@ public:
     [[nodiscard]] DSPNode* getCachedFilter() const noexcept { return m_cachedFilter; }
     [[nodiscard]] ReactiveDuckerNode* getCachedDucker() const noexcept { return m_cachedDucker; }
 
+    // Master Gain Staging & Soft Limiter Controls
+    void setMasterTrimDb(float db) noexcept {
+        float clamped = std::clamp(db, -24.0f, 12.0f);
+        m_masterTrimDb.store(clamped, std::memory_order_relaxed);
+        m_masterTrimLinear.store(std::pow(10.0f, clamped / 20.0f), std::memory_order_relaxed);
+    }
+    [[nodiscard]] float getMasterTrimDb() const noexcept {
+        return m_masterTrimDb.load(std::memory_order_relaxed);
+    }
+    [[nodiscard]] float getMasterTrimLinear() const noexcept {
+        return m_masterTrimLinear.load(std::memory_order_relaxed);
+    }
+
+    void setLimiterEnabled(bool enabled) noexcept { m_masterLimiter.setEnabled(enabled); }
+    [[nodiscard]] bool isLimiterEnabled() const noexcept { return m_masterLimiter.isEnabled(); }
+
+    void setLimiterCeilingDb(float db) noexcept { m_masterLimiter.setCeilingDb(db); }
+    [[nodiscard]] float getLimiterCeilingDb() const noexcept { return m_masterLimiter.getCeilingDb(); }
+
+    [[nodiscard]] float getLimiterReductionDb() const noexcept { return m_masterLimiter.getMaxReductionDb(); }
+
 private:
     void updateCachedNodes() noexcept;
 
@@ -79,6 +100,11 @@ private:
     mutable std::recursive_mutex m_rackMutex;
     std::vector<std::unique_ptr<DSPNode>> m_nodes;
     std::string m_inspectedNodeId{"master"};
+
+    // Master output soft limiter and trim
+    TransparentSoftLimiter m_masterLimiter{-0.3f};
+    std::atomic<float> m_masterTrimDb{0.0f};
+    std::atomic<float> m_masterTrimLinear{1.0f};
 
     // Lock-free double-buffered waveform capture
     mutable std::array<std::array<float, 512>, 2> m_waveformBuffers{};

@@ -737,104 +737,38 @@ export const App: React.FC = () => {
         addLog('output', `Loaded User Patch: ${preset.name} (${preset.pedals.length} units).`);
         return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
       } else {
-        // Factory Profiles
-        if (preset.id === 'bypass_all') {
-          const updated = board.pedals.map((p) => ({ ...p, bypassed: true }));
-          audioEngine.updatePedalParams(updated);
-          for (const p of updated) {
-            audioEngine.syncBypassToHost(p.id, true);
-          }
-          audioEngine.syncRackToHost(updated, preset.ampPlacement);
-          addLog('output', 'Bypassed all DSP effects and amplifiers (Direct Dry Passthrough).');
-          return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
-        } else if (preset.id.startsWith('mesa_')) {
-          const mesaSaved = preset.pedals.find((p) => p.type === 'mesa');
-          if (mesaSaved) {
-            const updated = board.pedals.map((p) => {
-              if (p.type === 'mesa') {
-                const newParams = { ...p.parameters };
-                for (const [k, v] of Object.entries(mesaSaved.parameters)) {
-                  if (newParams[k]) {
-                    newParams[k] = { ...newParams[k], value: v };
-                    audioEngine.syncPedalParamToHost(p.id, k, v);
-                  }
-                }
-                return { ...p, bypassed: false, parameters: newParams };
+        // Universal Factory Profile Loader (Supports all curated production suites & calibrated amp voicings)
+        const updated = board.pedals.map((pedal) => {
+          const saved = preset.pedals.find((p) => p.id === pedal.id || p.type === pedal.type);
+          if (saved) {
+            const newParams = { ...pedal.parameters };
+            for (const [k, v] of Object.entries(saved.parameters)) {
+              if (newParams[k]) {
+                newParams[k] = { ...newParams[k], value: v };
+                audioEngine.syncPedalParamToHost(pedal.id, k, v);
               }
-              if (p.type === 'vox') {
-                return { ...p, bypassed: true };
-              }
-              return p;
-            });
-            audioEngine.updatePedalParams(updated);
-            audioEngine.syncBypassToHost('mesa_mark3', false);
-            audioEngine.syncBypassToHost('vox_ac30', true);
-            audioEngine.syncRackToHost(updated, preset.ampPlacement);
-            handleSelectInspectNode('mesa_mark3');
-            addLog('output', `Loaded Factory Profile: ${preset.name}.`);
-            return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
-          }
-        } else if (preset.id.startsWith('vox_')) {
-          const voxSaved = preset.pedals.find((p) => p.type === 'vox');
-          if (voxSaved) {
-            const updated = board.pedals.map((p) => {
-              if (p.type === 'vox') {
-                const newParams = { ...p.parameters };
-                for (const [k, v] of Object.entries(voxSaved.parameters)) {
-                  if (newParams[k]) {
-                    newParams[k] = { ...newParams[k], value: v };
-                    audioEngine.syncPedalParamToHost(p.id, k, v);
-                  }
-                }
-                return { ...p, bypassed: false, parameters: newParams };
-              }
-              if (p.type === 'mesa') {
-                return { ...p, bypassed: true };
-              }
-              return p;
-            });
-            audioEngine.updatePedalParams(updated);
-            audioEngine.syncBypassToHost('vox_ac30', false);
-            audioEngine.syncBypassToHost('mesa_mark3', true);
-            audioEngine.syncRackToHost(updated, preset.ampPlacement);
-            handleSelectInspectNode('vox_ac30');
-            addLog('output', `Loaded Factory Profile: ${preset.name}.`);
-            return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
-          }
-        } else if (preset.id === 'ambient_dub') {
-          const delaySaved = preset.pedals.find((p) => p.type === 'delay');
-          const filterSaved = preset.pedals.find((p) => p.type === 'filter');
-          const updated = board.pedals.map((p) => {
-            if (p.type === 'delay' && delaySaved) {
-              const newParams = { ...p.parameters };
-              for (const [k, v] of Object.entries(delaySaved.parameters)) {
-                if (newParams[k]) {
-                  newParams[k] = { ...newParams[k], value: v };
-                  audioEngine.syncPedalParamToHost(p.id, k, v);
-                }
-              }
-              return { ...p, bypassed: false, parameters: newParams };
             }
-            if (p.type === 'filter' && filterSaved) {
-              const newParams = { ...p.parameters };
-              for (const [k, v] of Object.entries(filterSaved.parameters)) {
-                if (newParams[k]) {
-                  newParams[k] = { ...newParams[k], value: v };
-                  audioEngine.syncPedalParamToHost(p.id, k, v);
-                }
-              }
-              return { ...p, bypassed: false, parameters: newParams };
-            }
-            return p;
-          });
-          audioEngine.updatePedalParams(updated);
-          audioEngine.syncBypassToHost('dub_echo', false);
-          audioEngine.syncBypassToHost('resonant_filter', false);
-          audioEngine.syncRackToHost(updated, preset.ampPlacement);
-          handleSelectInspectNode('dub_echo');
-          addLog('output', `Loaded Factory Profile: ${preset.name}.`);
-          return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
+            audioEngine.syncBypassToHost(pedal.id, saved.bypassed);
+            return { ...pedal, bypassed: saved.bypassed, parameters: newParams };
+          }
+          // If not specified in preset, bypass cleanly
+          audioEngine.syncBypassToHost(pedal.id, true);
+          return { ...pedal, bypassed: true };
+        });
+
+        audioEngine.updatePedalParams(updated);
+        audioEngine.syncRackToHost(updated, preset.ampPlacement);
+
+        // Auto-inspect the primary active unit for real-time waveform display
+        const primaryActive = updated.find((p) => !p.bypassed && (p.type === 'mesa' || p.type === 'vox' || p.type === 'delay' || p.type === 'filter'));
+        if (primaryActive) {
+          handleSelectInspectNode(primaryActive.id);
+        } else {
+          handleSelectInspectNode('master');
         }
+
+        addLog('output', `Loaded Factory Profile: ${preset.name}.`);
+        return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
       }
       return board;
     });

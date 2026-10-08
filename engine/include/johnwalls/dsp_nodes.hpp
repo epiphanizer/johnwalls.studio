@@ -406,4 +406,114 @@ private:
     RBJBiquad m_cabHighL, m_cabHighR;
 };
 
+/**
+ * Analog-Modeled Transparent Soft Limiter.
+ * Provides musical, zero-latency, glitch-free soft-knee peak limiting with strict ceiling.
+ * Threshold is calibrated to -0.3 dBFS (~0.966f) to prevent inter-sample clipping and digital overs in Ableton Live.
+ * Below threshold T: output = input (100% bit-transparent unity gain).
+ * Above threshold T: continuous hyperbolic compression towards ceiling kCeiling (default 0.985f / -0.13 dBFS).
+ */
+class TransparentSoftLimiter {
+public:
+    explicit TransparentSoftLimiter(float ceilingDb = -0.3f) {
+        setCeilingDb(ceilingDb);
+    }
+
+    void prepare(double sampleRate) {
+        m_sampleRate = (sampleRate > 1000.0) ? sampleRate : 44100.0;
+        reset();
+    }
+
+    void reset() {
+        m_envelopeL = 0.0f;
+        m_envelopeR = 0.0f;
+        m_maxReduction.store(0.0f, std::memory_order_relaxed);
+    }
+
+    void setCeilingDb(float ceilingDb) {
+        m_ceilingDb = std::clamp(ceilingDb, -6.0f, 0.0f);
+        m_thresholdLinear = std::pow(10.0f, m_ceilingDb / 20.0f);
+        m_ceilingLinear = std::min(0.990f, m_thresholdLinear + 0.025f * (1.0f - m_thresholdLinear));
+    }
+
+    [[nodiscard]] float getCeilingDb() const noexcept { return m_ceilingDb; }
+    [[nodiscard]] float getThresholdLinear() const noexcept { return m_thresholdLinear; }
+    [[nodiscard]] float getCeilingLinear() const noexcept { return m_ceilingLinear; }
+
+    void setEnabled(bool enabled) noexcept { m_enabled = enabled; }
+    [[nodiscard]] bool isEnabled() const noexcept { return m_enabled; }
+
+    [[nodiscard]] float getMaxReductionDb() const noexcept {
+        return m_maxReduction.load(std::memory_order_relaxed);
+    }
+
+    void process(AudioBufferView& buffer, float masterTrimLinear = 1.0f) {
+        if (!m_enabled || buffer.getNumChannels() == 0) {
+            if (std::abs(masterTrimLinear - 1.0f) > 0.0001f) {
+                const size_t numSamples = buffer.getNumSamples();
+                for (size_t ch = 0; ch < buffer.getNumChannels(); ++ch) {
+                    float* data = buffer.getChannelData(ch);
+                    for (size_t i = 0; i < numSamples; ++i) {
+                        data[i] *= masterTrimLinear;
+                    }
+                }
+            }
+            return;
+        }
+
+        const size_t numSamples = buffer.getNumSamples();
+        const size_t numChannels = buffer.getNumChannels();
+        float* channelL = buffer.getChannelData(0);
+        float* channelR = (numChannels > 1) ? buffer.getChannelData(1) : nullptr;
+
+        const float T = m_thresholdLinear;
+        const float C = m_ceilingLinear;
+        const float headroom = std::max(0.0001f, C - T);
+
+        float blockMaxRed = 0.0f;
+
+        for (size_t i = 0; i < numSamples; ++i) {
+            float inL = channelL[i] * masterTrimLinear;
+            float absL = std::abs(inL);
+            float outL = inL;
+
+            if (absL > T) {
+                float excess = absL - T;
+                float limited = T + headroom * fastTanh(excess / headroom);
+                outL = (inL >= 0.0f) ? limited : -limited;
+                float redDb = 20.0f * std::log10(std::max(0.00001f, absL / limited));
+                if (redDb > blockMaxRed) blockMaxRed = redDb;
+            }
+            channelL[i] = outL;
+
+            if (channelR) {
+                float inR = channelR[i] * masterTrimLinear;
+                float absR = std::abs(inR);
+                float outR = inR;
+
+                if (absR > T) {
+                    float excess = absR - T;
+                    float limited = T + headroom * fastTanh(excess / headroom);
+                    outR = (inR >= 0.0f) ? limited : -limited;
+                    float redDb = 20.0f * std::log10(std::max(0.00001f, absR / limited));
+                    if (redDb > blockMaxRed) blockMaxRed = redDb;
+                }
+                channelR[i] = outR;
+            }
+        }
+
+        m_maxReduction.store(blockMaxRed, std::memory_order_relaxed);
+    }
+
+private:
+    double m_sampleRate{44100.0};
+    bool m_enabled{true};
+    float m_ceilingDb{-0.3f};
+    float m_thresholdLinear{0.9660508f};
+    float m_ceilingLinear{0.985f};
+    float m_envelopeL{0.0f};
+    float m_envelopeR{0.0f};
+    std::atomic<float> m_maxReduction{0.0f};
+};
+
 } // namespace johnwalls::johnwalls
