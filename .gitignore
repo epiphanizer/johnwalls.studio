@@ -1,16 +1,27 @@
+# Build directories and artifacts
+build/
+**/build/
+engine/build/
+vst/build/
+ui/dist/
+ui/node_modules/
+
+# Binaries and object files
+*.o
+*.a
+*.dylib
+*.vst3
+*.component
+
+# OS & Editor files
 .DS_Store
 **/.DS_Store
+.vscode/
+.idea/
 
-# Keep /sh focused on the actual Appreesh repo boundary.
-appreesh_master/*
-!appreesh_master/appreesh
-!appreesh_master/appreesh/**
+# JUCE submodule / checkout
+vst/JUCE/
 
-# Large archives and database backups
-*.tar.gz
-**/backups/*.tar.gz
-
-# Standalone client repositories and scratch directories
-clients/ramone_master/remote-job-guru/
-clients/ramone_master/remote_jobs/
-
+# Python cache
+__pycache__/
+*.pyc

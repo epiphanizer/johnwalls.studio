@@ -1,0 +1,144 @@
+name: Nightly VST Build & Release
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # Every night at 04:00 UTC
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS VST3 & AU Universal
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI Dependencies & Build Web Bundle
+        run: |
+          cd ui
+          npm ci || npm install
+          npm run build
+
+      - name: Clone JUCE Framework
+        run: |
+          if [ ! -d "vst/JUCE" ]; then
+            git clone --depth 1 --branch 9.0.3 https://github.com/juce-framework/JUCE.git vst/JUCE
+          fi
+
+      - name: Install Build Tools (Ninja)
+        run: |
+          brew install ninja || true
+
+      - name: Configure CMake
+        run: |
+          cmake -S vst -B vst/build \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DJWS_BUILD_VST_TESTS=OFF
+
+      - name: Build VST3 and Audio Unit Plugins
+        run: |
+          cmake --build vst/build --config Release --parallel
+
+      - name: Package Plugins into Distribution Archive
+        run: |
+          mkdir -p dist_package
+          cp -R vst/build/johnwalls_studio_artefacts/Release/VST3/johnwalls.studio.vst3 dist_package/
+          cp -R vst/build/johnwalls_studio_artefacts/Release/AU/johnwalls.studio.component dist_package/
+          
+          cat << 'EOF' > dist_package/INSTALL.txt
+          ========================================================================
+           johnwalls.studio VST3 & Audio Unit (AU) Plugin
+           Free & Open Source Generative Audio DSP Lab
+           https://johnwalls.studio | https://github.com/epiphanizer/johnwalls.studio
+          ========================================================================
+
+          AUTOMATIC INSTALLATION (macOS):
+            Open Terminal in this unzipped folder and run:
+              chmod +x install.sh && ./install.sh
+
+          MANUAL INSTALLATION:
+            1. Copy "johnwalls.studio.vst3" to:
+               ~/Library/Audio/Plug-Ins/VST3/
+
+            2. Copy "johnwalls.studio.component" to:
+               ~/Library/Audio/Plug-Ins/Components/
+
+            3. (If macOS Gatekeeper warns on first launch):
+               In Terminal, run:
+                 xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/johnwalls.studio.vst3
+                 xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/johnwalls.studio.component
+
+            4. Open Ableton Live 12, Logic Pro, Bitwig, or Reaper:
+               - Rescan plugins in Preferences -> Plug-Ins.
+               - Look for "johnwalls.studio" under VST3 or Audio Units.
+
+          REQUIREMENTS:
+            - macOS 12.0+ (Universal: Apple Silicon M1/M2/M3/M4 & Intel 64-bit)
+            - Any VST3 or Audio Unit compatible DAW
+          ========================================================================
+          EOF
+
+          cat << 'EOF' > dist_package/install.sh
+          #!/usr/bin/env bash
+          set -e
+          echo "Installing johnwalls.studio VST3 & AU plugins..."
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/VST3"
+          mkdir -p "$HOME/Library/Audio/Plug-Ins/Components"
+          cp -R "johnwalls.studio.vst3" "$HOME/Library/Audio/Plug-Ins/VST3/"
+          cp -R "johnwalls.studio.component" "$HOME/Library/Audio/Plug-Ins/Components/"
+          xattr -dr com.apple.quarantine "$HOME/Library/Audio/Plug-Ins/VST3/johnwalls.studio.vst3" 2>/dev/null || true
+          xattr -dr com.apple.quarantine "$HOME/Library/Audio/Plug-Ins/Components/johnwalls.studio.component" 2>/dev/null || true
+          echo "✓ Successfully installed johnwalls.studio!"
+          EOF
+          chmod +x dist_package/install.sh
+
+          (cd dist_package && zip -r -9 ../johnwalls-studio-macos.zip .)
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: johnwalls-studio-macos
+          path: johnwalls-studio-macos.zip
+          retention-days: 90
+
+      - name: Publish Nightly GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: nightly
+          name: "johnwalls.studio Nightly Build"
+          body: |
+            ### Automated Nightly Build: `johnwalls.studio` VST3 & AU
+            - **Commit**: `${{ github.sha }}`
+            - **Universal macOS Binaries**: Apple Silicon (`arm64`) & Intel (`x86_64`)
+            - **Formats**: VST3 & Audio Unit (AU) for Ableton Live 12, Logic Pro, Bitwig, Reaper
+            - **License**: Free & Open Source
+            
+            #### Installation:
+            1. Download `johnwalls-studio-macos.zip`.
+            2. Unzip and run `./install.sh` in Terminal, or copy `.vst3` to `~/Library/Audio/Plug-Ins/VST3/` and `.component` to `~/Library/Audio/Plug-Ins/Components/`.
+            3. Rescan plugins in your DAW.
+          prerelease: true
+          files: johnwalls-studio-macos.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
