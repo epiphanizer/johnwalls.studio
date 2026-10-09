@@ -473,6 +473,34 @@ for bar_num, b_offset, freq, dur, vib in lead_melodies:
     note = synthesize_lead_guitar_note(freq, dur_sec=dur, vibrato_depth=vib, drive=3.8)
     place_mono(stem_gtr_lead, note * 0.85, t_start)
 
+# ── C2: Route Terry's Guitars through Native C++ MesaMarkNode & Limiter ─────────
+print("Routing Terry's Guitar Track through Native C++ MesaMarkNode & TransparentSoftLimiter...")
+dry_lead_path = "/tmp/dry_lead_guitar.wav"
+mesa_lead_path = "/tmp/mesa_lead_guitar.wav"
+
+from scipy.io import wavfile
+wavfile.write(dry_lead_path, SAMPLE_RATE, stem_gtr_lead.astype(np.float32))
+
+mesa_bin = "/Users/seanhalls/Desktop/sh/johnwalls_studio/engine/build/mesa_processor"
+stem_mesa_lead_l = stem_gtr_lead
+stem_mesa_lead_r = stem_gtr_lead
+
+if os.path.exists(mesa_bin):
+    cmd = [mesa_bin, dry_lead_path, mesa_lead_path, "8.8", "-5.0"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode == 0 and os.path.exists(mesa_lead_path):
+        sr, mesa_audio = wavfile.read(mesa_lead_path)
+        if len(mesa_audio.shape) > 1:
+            stem_mesa_lead_l = mesa_audio[:, 0]
+            stem_mesa_lead_r = mesa_audio[:, 1]
+        else:
+            stem_mesa_lead_l = mesa_audio
+            stem_mesa_lead_r = mesa_audio
+        print(f"✓ Terry's Lead successfully routed through C++ Mesa Boogie Mark! Peak: {np.max(np.abs(mesa_audio)):.4f}")
+    else:
+        print("Mesa processor warning:", res.stderr)
+
+
 # ── Part D: Spoken-Word Vocals Treatment & Placement ───────────────────────────
 print("Placing Spoken-Word Vocal Stems...")
 
@@ -528,13 +556,16 @@ print("Summing Stems into Analog Stereo Field...")
 # Guitar stereo processing:
 # Rhythm guitar: panned slightly left (0.35) with ambient stereo reverb
 # Lead guitar: center-right (0.65) with stereo tape delay
-lead_stereo = stereo_delay(stem_gtr_lead * 0.8, delay_sec=0.326, feedback=0.42, pan_l=0.3, pan_r=0.8)
+lead_delay_l = stereo_delay(stem_mesa_lead_l * 0.75, delay_sec=0.326, feedback=0.42, pan_l=0.25, pan_r=0.75)
+lead_delay_r = stereo_delay(stem_mesa_lead_r * 0.75, delay_sec=0.345, feedback=0.40, pan_l=0.75, pan_r=0.25)
+lead_stereo_l = stem_mesa_lead_l * 0.82 + lead_delay_l[0] * 0.35
+lead_stereo_r = stem_mesa_lead_r * 0.82 + lead_delay_r[1] * 0.35
 rhy_stereo_l = stem_gtr_rhy * 0.85
 rhy_stereo_r = stem_gtr_rhy * 0.55
 
-# Drums stereo bus
-mix_l = stem_drums_l * 0.82 + stem_bass * 0.88 + rhy_stereo_l + lead_stereo[0] + stem_harm * 0.5 + stem_scratch * 0.6 + stem_vocals_l
-mix_r = stem_drums_r * 0.82 + stem_bass * 0.88 + rhy_stereo_r + lead_stereo[1] + stem_harm * 0.5 + stem_scratch * 0.6 + stem_vocals_r
+# Drums stereo bus & Master Stem Summing
+mix_l = stem_drums_l * 0.80 + stem_bass * 0.85 + rhy_stereo_l + lead_stereo_l + stem_harm * 0.45 + stem_scratch * 0.55 + stem_vocals_l
+mix_r = stem_drums_r * 0.80 + stem_bass * 0.85 + rhy_stereo_r + lead_stereo_r + stem_harm * 0.45 + stem_scratch * 0.55 + stem_vocals_r
 
 stereo_mix = np.vstack([mix_l, mix_r])
 

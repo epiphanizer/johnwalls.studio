@@ -32,5 +32,14 @@ target_link_libraries(johnwalls_tests PRIVATE
     johnwalls_engine
 )
 
+# Standalone Mesa Boogie Mark Processor CLI
+add_executable(mesa_processor
+    src/mesa_processor_cli.cpp
+)
+
+target_link_libraries(mesa_processor PRIVATE
+    johnwalls_engine
+)
+
 enable_testing()
 add_test(NAME EngineUnitTests COMMAND johnwalls_tests)
