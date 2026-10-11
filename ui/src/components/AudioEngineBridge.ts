@@ -1,5 +1,6 @@
 import { MusicalState, PedalInstance, ReactiveRule, SensoryChannelInfo, StateTelemetry } from '../types';
 import { getSharedAudioContext } from '../utils/sharedAudioContext';
+import { getTelemetryUrl } from '../utils/nativeTransport';
 
 interface LiveSensorDetector {
   id: string;
@@ -158,7 +159,7 @@ export class AudioEngineBridge {
       // If direct in-process bridge hasn't emitted within last 150ms, poll local server
       if (performance.now() - this.lastJuceTelemetryTime > 150) {
         try {
-          const res = await fetch('http://127.0.0.1:3012/telemetry');
+          const res = await fetch(getTelemetryUrl('/telemetry'));
           if (res.ok) {
             const data = await res.json();
             this.handleTelemetryData(data);
@@ -342,7 +343,7 @@ export class AudioEngineBridge {
     this.sendToHost(
       'sp404SetRouting',
       { order, bypassed },
-      'http://127.0.0.1:3012/sp404/routing'
+      getTelemetryUrl('/sp404/routing')
     );
 
     if (!this.ctx || !this.currentSP404Gain) return;
@@ -826,11 +827,11 @@ export class AudioEngineBridge {
   }
 
   public sendParameterToHost(paramId: string, value: number) {
-    this.sendToHost('setDspParameter', { id: paramId, value }, 'http://127.0.0.1:3012/parameter', { id: paramId, value });
+    this.sendToHost('setDspParameter', { id: paramId, value }, getTelemetryUrl('/parameter'), { id: paramId, value });
   }
 
   public sendInspectNodeToHost(nodeId: string) {
-    this.sendToHost('setInspectedNode', { id: nodeId }, 'http://127.0.0.1:3012/inspect', { id: nodeId });
+    this.sendToHost('setInspectedNode', { id: nodeId }, getTelemetryUrl('/inspect'), { id: nodeId });
   }
 
   public syncRackToHost(pedals: PedalInstance[], ampPlacement?: 'outbound' | 'inbound') {
@@ -846,15 +847,15 @@ export class AudioEngineBridge {
         }, {} as Record<string, number>)
       }))
     };
-    this.sendToHost('syncRackState', payload, 'http://127.0.0.1:3012/rack', payload);
+    this.sendToHost('syncRackState', payload, getTelemetryUrl('/rack'), payload);
   }
 
   public syncAddPedalToHost(type: string, id: string) {
-    this.sendToHost('addPedal', { type, id }, 'http://127.0.0.1:3012/pedal/add', { type, id });
+    this.sendToHost('addPedal', { type, id }, getTelemetryUrl('/pedal/add'), { type, id });
   }
 
   public syncRemovePedalToHost(pedalId: string) {
-    this.sendToHost('removePedal', { id: pedalId }, 'http://127.0.0.1:3012/pedal/remove', { id: pedalId });
+    this.sendToHost('removePedal', { id: pedalId }, getTelemetryUrl('/pedal/remove'), { id: pedalId });
   }
 
   public syncPedalParamToHost(pedalId: string, paramName: string, value: number) {
@@ -905,7 +906,7 @@ export class AudioEngineBridge {
     }
 
     // Always notify C++ pedal rack for dynamic or unmapped parameters
-    this.sendToHost('setPedalParameter', { pedalId, paramName, value }, 'http://127.0.0.1:3012/pedal/parameter', { pedalId, paramName, value });
+    this.sendToHost('setPedalParameter', { pedalId, paramName, value }, getTelemetryUrl('/pedal/parameter'), { pedalId, paramName, value });
   }
 
   public syncBypassToHost(pedalId: string, bypassed: boolean) {
@@ -923,7 +924,7 @@ export class AudioEngineBridge {
       this.sendParameterToHost('ducker_bypass', bypassed ? 1.0 : 0.0);
     }
 
-    this.sendToHost('setPedalBypassed', { pedalId, bypassed }, 'http://127.0.0.1:3012/pedal/bypass', { pedalId, bypassed });
+    this.sendToHost('setPedalBypassed', { pedalId, bypassed }, getTelemetryUrl('/pedal/bypass'), { pedalId, bypassed });
   }
 
   public updatePedalParams(pedals: PedalInstance[]) {

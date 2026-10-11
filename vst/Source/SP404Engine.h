@@ -10,6 +10,7 @@
 #include <memory>
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
 
 namespace johnwalls::johnwalls {
 
@@ -28,7 +29,7 @@ enum class SP404MFX {
 };
 
 struct SP404PadData {
-    int id{1}; // 1 to 16
+    int id{1}; // 1 to 12 on the legacy Original / A profile
     int bank{0}; // 0 = A, 1 = B, ... 9 = J
     std::string label{"EMPTY"};
     std::string category{"custom"};
@@ -65,7 +66,7 @@ struct SP404Voice {
 class SP404Engine {
 public:
     static constexpr size_t kNumBanks = 10;
-    static constexpr size_t kPadsPerBank = 16;
+    static constexpr size_t kPadsPerBank = 12;
     static constexpr size_t kMaxVoices = 32;
 
     SP404Engine();
@@ -99,7 +100,12 @@ public:
 
     // Custom sample loading from UI or files
     bool loadCustomSample(int bankIndex, int padId, const float* left, const float* right,
-                          size_t numSamples, float sampleRate, const std::string& label);
+                          size_t numSamples, float sampleRate, const std::string& label,
+                          float pitchSemitones = 0.0f, float volume = 1.0f, float pan = 0.0f,
+                          bool isLoop = false, bool isReverse = false, int muteGroup = 0);
+    void clearCustomSamples();
+    std::vector<uint8_t> serializeState() const;
+    bool deserializeState(const uint8_t* data, size_t size);
 
     // Chromatic mode settings
     void setChromaticMode(bool enabled, int rootBank = 0, int rootPad = 11) noexcept {
@@ -108,6 +114,8 @@ public:
         m_chromaticRootPad.store(rootPad, std::memory_order_relaxed);
     }
     [[nodiscard]] bool isChromaticMode() const noexcept { return m_isChromatic.load(std::memory_order_relaxed); }
+    [[nodiscard]] int getChromaticRootBank() const noexcept { return m_chromaticRootBank.load(std::memory_order_relaxed); }
+    [[nodiscard]] int getChromaticRootPad() const noexcept { return m_chromaticRootPad.load(std::memory_order_relaxed); }
 
     SP404PadData* getPad(int bankIndex, int padId);
     const SP404PadData* getPad(int bankIndex, int padId) const;

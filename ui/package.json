@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "tsc --noEmit",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "desktop": "electron electron/main.cjs",

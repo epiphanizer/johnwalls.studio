@@ -22,8 +22,18 @@ import {
   sp404AudioEngine,
   BankLetter,
   MFXType,
-  SP404Pad
+  SP404Pad,
+  type NativeSP404State,
+  type SP404TransferProgress
 } from './SP404AudioEngine';
+import {
+  SP404_LEGACY_PROFILE,
+  SP404_LEGACY_PROFILES,
+  type SP404HardwareProfileId,
+  type SP404LibraryManifest
+} from '../utils/sp404Library';
+import { hasJuceNativeHost } from '../utils/nativeTransport';
+import { summarizeSP404CardValidation, validateSP404CardFiles } from '../utils/sp404CardValidation';
 
 interface SP404WorkstationProps {
   onSwitchToPedalLab: () => void;
@@ -39,8 +49,7 @@ const CHROMATIC_NOTE_NAMES = [
 const PAD_SUB_LABELS = [
   'HOLD', 'EXT SOURCE', 'SUB PAD', 'REVERSE',
   'CHOP', 'PITCH/SPEED', 'AUTO SYNC', 'LOOP/GATE',
-  'BEND -', 'BEND +', 'ROLL', 'MARK',
-  'C ROOT', 'OCT -', 'OCT +', 'REMAIN'
+  'BEND -', 'BEND +', 'ROLL', 'MARK'
 ];
 
 export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
@@ -72,19 +81,27 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
   const [armedRecordPad, setArmedRecordPad] = useState<{ bank: BankLetter; id: number } | null>(null);
 
   // Memory Card Notification / Status
-  const [cardStatusMessage, setCardStatusMessage] = useState<string>('CARD READY (160 SLOTS ONLINE)');
+  const [cardStatusMessage, setCardStatusMessage] = useState<string>('LEGACY CARD WORKFLOW · 120 SLOTS');
+  const [hardwareProfileId, setHardwareProfileId] = useState<SP404HardwareProfileId>(SP404_LEGACY_PROFILE.id);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [libraryName, setLibraryName] = useState<string>('Untitled SP-404 Set');
+  const [libraries, setLibraries] = useState<SP404LibraryManifest[]>([]);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string>('');
+  const [nativeStateReady, setNativeStateReady] = useState<boolean>(() => !hasJuceNativeHost());
+  const [transferProgress, setTransferProgress] = useState<SP404TransferProgress | null>(null);
 
   // Edit Pad Details Drawer
   const [editingPad, setEditingPad] = useState<SP404Pad | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
 
   // Force re-render on engine state change with safe unmount guard
   const [, setTick] = useState(0);
   useEffect(() => {
     let isMounted = true;
+    const nativeHost = hasJuceNativeHost();
     sp404AudioEngine.setOnStateChange(() => {
       if (isMounted) {
         setTick((t) => t + 1);
@@ -96,56 +113,88 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
         setRecordingElapsedMs(ms);
       }
     });
+    sp404AudioEngine.setOnNativeState((state: NativeSP404State) => {
+      if (!isMounted) return;
+      setVolume(state.volume);
+      setActiveEffect((['vinyl', 'djfx', 'isolator', 'cassette', 'filter', 'pitch'][state.activeMfx] || 'vinyl') as MFXType);
+      setCtrl1(state.ctrl1);
+      setCtrl2(state.ctrl2);
+      setCtrl3(state.ctrl3);
+      setIsChromaticMode(state.chromatic);
+      setNativeStateReady(true);
+      setCardStatusMessage('NATIVE SP-404 STATE RESTORED · UI HYDRATED');
+    });
+    sp404AudioEngine.setOnTransferProgress((progress) => {
+      if (isMounted) setTransferProgress(progress.phase === 'complete' || progress.phase === 'cancelled' || progress.phase === 'error' ? null : progress);
+    });
 
     // Initialize audio context on mount safely
     sp404AudioEngine.initAudio();
+    sp404AudioEngine.listLibraries().then(setLibraries).catch(() => setLibraries([]));
+    const nativeStateFallback = nativeHost
+      ? window.setTimeout(() => setNativeStateReady(true), 1000)
+      : null;
 
     return () => {
       isMounted = false;
+      if (nativeStateFallback) window.clearTimeout(nativeStateFallback);
       sp404AudioEngine.stopAllPads();
+      sp404AudioEngine.cancelSampleTransfers();
       sp404AudioEngine.setOnStateChange(() => {});
       sp404AudioEngine.setOnRecordingProgress(() => {});
+      sp404AudioEngine.setOnNativeState(() => {});
+      sp404AudioEngine.setOnTransferProgress(() => {});
       if (sp404AudioEngine.getIsRecording()) {
         sp404AudioEngine.stopRecording();
       }
     };
   }, []);
 
+  const nativeControlsReady = !hasJuceNativeHost() || nativeStateReady;
+
   // Sync MFX & Volume controls to engine
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setVolume(volume);
-  }, [volume]);
+  }, [volume, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setMFXType(activeEffect);
-  }, [activeEffect]);
+  }, [activeEffect, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setCtrl1(ctrl1);
-  }, [ctrl1]);
+  }, [ctrl1, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setCtrl2(ctrl2);
-  }, [ctrl2]);
+  }, [ctrl2, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setCtrl3(ctrl3);
-  }, [ctrl3]);
+  }, [ctrl3, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setVinylRpm(isVinyl33Rpm);
-  }, [isVinyl33Rpm]);
+  }, [isVinyl33Rpm, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setGlobalTranspose(globalTranspose);
-  }, [globalTranspose]);
+  }, [globalTranspose, nativeControlsReady]);
 
   useEffect(() => {
+    if (!nativeControlsReady) return;
     sp404AudioEngine.setChromaticMode(isChromaticMode, activeBank, selectedPadId);
-  }, [isChromaticMode, activeBank, selectedPadId]);
+  }, [isChromaticMode, activeBank, selectedPadId, nativeControlsReady]);
 
   // Current Bank Pads
-  const currentPads = sp404AudioEngine.getBank(activeBank);
+  const currentPads = sp404AudioEngine.getBank(activeBank).slice(0, SP404_LEGACY_PROFILE.padsPerBank);
 
   // Handle Triggering Pads
   const handlePadPress = (padId: number) => {
@@ -176,8 +225,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
   const keyMap: Record<string, number> = {
     '1': 1, '2': 2, '3': 3, '4': 4,
     'q': 5, 'w': 6, 'e': 7, 'r': 8,
-    'a': 9, 's': 10, 'd': 11, 'f': 12,
-    'z': 13, 'x': 14, 'c': 15, 'v': 16
+    'a': 9, 's': 10, 'd': 11, 'f': 12
   };
 
   useEffect(() => {
@@ -249,25 +297,119 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
   // SD Card Import / Export
   const handleImportFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    setCardStatusMessage('DECODING SD SAMPLES...');
+    const profile = SP404_LEGACY_PROFILES[hardwareProfileId];
+    const isCardFolder = Array.from(e.target.files).some((file) => Boolean((file as File & { webkitRelativePath?: string }).webkitRelativePath));
+    let expectedCount = e.target.files.length;
+    if (isCardFolder) {
+      const report = validateSP404CardFiles(e.target.files, profile);
+      setCardStatusMessage(summarizeSP404CardValidation(report));
+      if (!report.valid) {
+        e.target.value = '';
+        return;
+      }
+      expectedCount = report.audioFileCount;
+      setCardStatusMessage(`VALIDATED · ${report.audioFileCount} FILES · DECODING ${profile.label.toUpperCase()} SAMPLES...`);
+    } else {
+      setCardStatusMessage(`IMPORTING ${e.target.files.length} AUDIO FILES...`);
+    }
     const res = await sp404AudioEngine.importFromCardFiles(e.target.files);
-    setCardStatusMessage(`LOADED ${res.loadedCount} SAMPLES INTO 404.`);
+    setCardStatusMessage(`LOADED ${res.loadedCount}/${expectedCount} ${profile.label.toUpperCase()} SAMPLES.`);
+    e.target.value = '';
   };
 
-  const handleExportCardTemplate = async () => {
-    setIsExporting(true);
-    setCardStatusMessage('PACKAGING SP-404MKII SD CARD ZIP...');
+  const handleSaveLibrary = async () => {
     try {
-      const zipBlob = await sp404AudioEngine.exportToCardZip();
+      const profile = SP404_LEGACY_PROFILES[hardwareProfileId];
+      sp404AudioEngine.setHardwareProfile(hardwareProfileId);
+      const manifest = await sp404AudioEngine.saveLibrary(libraryName, profile);
+      const next = await sp404AudioEngine.listLibraries();
+      setLibraries(next);
+      setSelectedLibraryId(manifest.id);
+      setCardStatusMessage(`SET SAVED: ${manifest.name.toUpperCase()}`);
+    } catch (err) {
+      console.error('Could not save SP-404 set:', err);
+      setCardStatusMessage('SET SAVE ERROR: BROWSER STORAGE UNAVAILABLE.');
+    }
+  };
+
+  const handleLoadLibrary = async () => {
+    if (!selectedLibraryId) return;
+    const manifest = libraries.find((item) => item.id === selectedLibraryId);
+    const loaded = await sp404AudioEngine.loadLibrary(selectedLibraryId);
+    if (loaded && manifest) {
+      setLibraryName(manifest.name);
+      setHardwareProfileId(manifest.hardware.id);
+      setVolume(manifest.settings.volume);
+      setActiveEffect(manifest.settings.activeMFX as MFXType);
+      setCtrl1(manifest.settings.ctrl1);
+      setCtrl2(manifest.settings.ctrl2);
+      setCtrl3(manifest.settings.ctrl3);
+      setGlobalTranspose(manifest.settings.globalTranspose);
+      setIsChromaticMode(manifest.settings.isChromaticMode);
+      setCardStatusMessage(`SET LOADED: ${manifest.name.toUpperCase()}`);
+    } else {
+      setCardStatusMessage('SET LOAD ERROR: INCOMPATIBLE LEGACY PROFILE.');
+    }
+  };
+
+  const handleExportLibrary = async () => {
+    setIsExporting(true);
+    try {
+      const profile = SP404_LEGACY_PROFILES[hardwareProfileId];
+      sp404AudioEngine.setHardwareProfile(hardwareProfileId);
+      const zipBlob = await sp404AudioEngine.exportLibraryPackage(libraryName, profile);
       const url = URL.createObjectURL(zipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `SP404MKII_SD_CARD_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = `${libraryName.trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'sp404-set'}.jw404`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setCardStatusMessage('SD TEMPLATE EXPORTED: EXTRACT TO PHYSICAL CARD!');
+      setCardStatusMessage('PORTABLE .JW404 LIBRARY EXPORTED.');
+    } catch (err) {
+      console.error('Could not export SP-404 library:', err);
+      setCardStatusMessage('SET EXPORT ERROR.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportLibrary = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const manifest = await sp404AudioEngine.importLibraryPackage(file);
+      const next = await sp404AudioEngine.listLibraries();
+      setLibraries(next);
+      setSelectedLibraryId(manifest.id);
+      setLibraryName(manifest.name);
+      setHardwareProfileId(manifest.hardware.id);
+      setCardStatusMessage(`LIBRARY IMPORTED: ${manifest.name.toUpperCase()}`);
+    } catch (err) {
+      console.error('Could not import SP-404 library:', err);
+      setCardStatusMessage('LIBRARY IMPORT ERROR: UNSUPPORTED OR CORRUPT FILE.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleExportCardTemplate = async () => {
+    setIsExporting(true);
+    setCardStatusMessage('PACKAGING LEGACY SP-404 IMPORT FILES...');
+    try {
+      const profile = SP404_LEGACY_PROFILES[hardwareProfileId];
+      sp404AudioEngine.setHardwareProfile(hardwareProfileId);
+      const zipBlob = await sp404AudioEngine.exportToCardZip(profile);
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SP404_LEGACY_IMPORT_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setCardStatusMessage('IMPORT PACKAGE READY: LOAD EACH BANK FOLDER SEPARATELY.');
     } catch (err) {
       console.error('Export failed:', err);
       setCardStatusMessage('EXPORT ERROR: COULD NOT PACKAGE SAMPLES.');
@@ -302,7 +444,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="text-xs font-black text-white uppercase tracking-widest">
-                SP-404MKII
+                SP-404 ORIGINAL / A
               </span>
               <span className="text-[10px] font-bold text-[#ff8844] tracking-wider">
                 LINEAR WAVE SAMPLER
@@ -312,7 +454,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
               </span>
             </div>
             <span className="text-[10px] font-mono font-bold text-amber-400 truncate max-w-md">
-              {cardStatusMessage}
+              {transferProgress
+                ? `SYNCING ${transferProgress.label} · ${transferProgress.completedChunks}/${transferProgress.totalChunks} CHUNKS`
+                : cardStatusMessage}
             </span>
           </div>
         </div>
@@ -336,15 +480,91 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
             onChange={handleImportFiles}
             className="hidden"
           />
+          <input
+            ref={libraryInputRef}
+            type="file"
+            accept=".jw404,application/zip"
+            onChange={handleImportLibrary}
+            className="hidden"
+          />
+
+          <div className="flex items-center gap-1.5 bg-[#11131a] border border-slate-700 rounded-lg px-2 py-1">
+            <span className="text-[9px] text-slate-400 font-bold">SET</span>
+            <input
+              value={libraryName}
+              onChange={(e) => setLibraryName(e.target.value)}
+              className="w-36 bg-transparent text-[10px] text-white outline-none"
+              aria-label="SP-404 set name"
+            />
+            <button
+              type="button"
+              onClick={handleSaveLibrary}
+              className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black"
+            >
+              SAVE
+            </button>
+            <button
+              type="button"
+              onClick={handleExportLibrary}
+              className="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] font-black"
+            >
+              EXPORT
+            </button>
+          </div>
+
+          <select
+            value={hardwareProfileId}
+            onChange={(e) => {
+              const nextProfile = e.target.value as SP404HardwareProfileId;
+              setHardwareProfileId(nextProfile);
+              sp404AudioEngine.setHardwareProfile(nextProfile);
+              setCardStatusMessage(`${SP404_LEGACY_PROFILES[nextProfile].label.toUpperCase()} PROFILE ACTIVE.`);
+            }}
+            className="max-w-44 px-2 py-1.5 rounded-lg bg-[#1e2330] border border-slate-600 text-[10px] text-slate-200"
+            aria-label="SP-404 hardware profile"
+          >
+            {Object.values(SP404_LEGACY_PROFILES).map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.label}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedLibraryId}
+            onChange={(e) => setSelectedLibraryId(e.target.value)}
+            className="max-w-40 px-2 py-1.5 rounded-lg bg-[#1e2330] border border-slate-600 text-[10px] text-slate-200"
+            aria-label="Saved SP-404 sets"
+          >
+            <option value="">LOAD SAVED SET...</option>
+            {libraries.map((library) => (
+              <option key={library.id} value={library.id}>{library.name}</option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            disabled={!selectedLibraryId}
+            onClick={handleLoadLibrary}
+            className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black disabled:opacity-40"
+          >
+            LOAD SET
+          </button>
+
+          <button
+            type="button"
+            onClick={() => libraryInputRef.current?.click()}
+            className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black"
+          >
+            IMPORT .JW404
+          </button>
 
           <button
             type="button"
             onClick={() => folderInputRef.current?.click()}
             className="px-3 py-1.5 rounded-lg bg-[#1e2330] border border-slate-600 hover:border-[#ff5500] text-white hover:text-[#ff8844] text-[11px] font-bold transition flex items-center gap-1.5 shadow"
-            title="Import an entire SD card structure (/ROLAND/SP-404MKII/SMPL) or sample directory"
+            title="Import legacy SP-404 card files such as A_01.WAV or A0000001.WAV"
           >
             <Upload size={13} className="text-[#ff5500]" />
-            <span>LOAD MEMORY CARD</span>
+            <span>LOAD CARD FILES</span>
           </button>
 
           <button
@@ -361,7 +581,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
             disabled={isExporting}
             onClick={handleExportCardTemplate}
             className="px-3 py-1.5 rounded-lg bg-[#ff5500]/25 hover:bg-[#ff5500]/35 text-[#ff8844] border border-[#ff5500]/60 text-[11px] font-bold transition flex items-center gap-1.5 shadow"
-            title="Export full Roland SP-404MKII SD Card structure ready for hardware card"
+            title={`Export a ${SP404_LEGACY_PROFILES[hardwareProfileId].label} card-import package`}
           >
             <Download size={13} />
             <span>{isExporting ? 'EXPORTING...' : 'SAVE 404 TEMPLATE'}</span>
@@ -406,7 +626,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
         </div>
       </div>
 
-      {/* 2. Main Hardware Chassis: Authentic SP-404 MKII Faceplate */}
+          {/* 2. Main Hardware Chassis: Legacy SP-404 faceplate */}
       <div className="relative max-w-4xl mx-auto w-full bg-[#181a22] border-2 border-slate-700/90 rounded-3xl p-6 shadow-2xl space-y-6">
         {/* Corner Hex Socket Screws */}
         <div className="absolute top-3 left-3 w-3.5 h-3.5 rounded-full bg-slate-700 border border-slate-500 shadow-inner flex items-center justify-center">
@@ -536,7 +756,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
 
                 {/* Footer Mode Tag */}
                 <div className="pb-1 text-[8.5px] text-slate-400 font-bold uppercase tracking-wider z-10">
-                  {isChromaticMode ? 'CHROMATIC MODE' : `BANK ${activeBank} · 16 PADS`}
+                  {isChromaticMode ? 'CHROMATIC MODE' : `BANK ${activeBank} · ${SP404_LEGACY_PROFILE.padsPerBank} PADS`}
                 </div>
               </div>
             </div>
@@ -688,7 +908,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_#c084fc]'
                   : 'bg-[#1e2330] text-slate-200 border-slate-600 hover:text-white hover:border-slate-400'
               }`}
-              title="Transform 16 pads into a chromatic pitch keyboard"
+              title="Transform 12 pads into a chromatic pitch keyboard"
             >
               <Music size={13} />
               <span>CHROMATIC {isChromaticMode ? 'ON' : 'OFF'}</span>
@@ -793,7 +1013,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                       : 'bg-rose-900 text-white border-rose-300 animate-pulse shadow-[0_0_16px_#f43f5e]'
                     : isSelected
                     ? 'bg-[#293042] text-white border-[#ff5500] ring-2 ring-[#ff5500]/60 shadow-xl'
-                    : pad.audioBuffer
+                    : pad.audioBuffer || pad.nativeSampleAvailable
                     ? 'bg-[#1e2331] text-white border-slate-500 hover:border-slate-300 hover:bg-[#252c3d]'
                     : 'bg-[#131620] text-slate-400 border-slate-700/80 hover:border-slate-500'
                 }`}
@@ -804,7 +1024,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                     <span className="text-xs font-black text-white">
                       {pad.id}
                     </span>
-                    {pad.audioBuffer && (
+                    {(pad.audioBuffer || pad.nativeSampleAvailable) && (
                       <span className={`w-1.5 h-1.5 rounded-full ${pad.isHit ? 'bg-black' : 'bg-emerald-400 shadow-[0_0_4px_#34d399]'}`} />
                     )}
                   </div>
@@ -815,7 +1035,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                       </span>
                     )}
                     <span className="text-[9px] font-mono font-bold text-slate-400 bg-black/40 border border-slate-700 px-1 rounded">
-                      {['1','2','3','4','Q','W','E','R','A','S','D','F','Z','X','C','V'][idx]}
+                      {['1','2','3','4','Q','W','E','R','A','S','D','F'][idx]}
                     </span>
                   </div>
                 </div>
@@ -841,7 +1061,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                     {isChromaticMode ? getChromaticNoteLabel(pad.id) : pad.label}
                   </span>
                   <span className="text-[7.5px] font-black tracking-widest text-[#ff8844] uppercase block truncate opacity-90">
-                    {PAD_SUB_LABELS[idx]}
+                    {pad.nativeSampleAvailable && !pad.audioBuffer ? 'NATIVE RESTORED' : PAD_SUB_LABELS[idx]}
                   </span>
                 </div>
               </button>
@@ -853,9 +1073,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
         <div className="bg-[#12141c] border border-slate-700/80 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5">
             <Sparkles size={16} className="text-[#ff5500] shrink-0" />
-            <span className="text-[11.5px] leading-relaxed text-slate-200">
-              <strong className="text-white">Real-Time Continuous Sampling:</strong> Hit{' '}
-              <span className="text-rose-400 font-bold">REC (EXT IN)</span> to capture real-time audio from Ableton continuously while simultaneously triggering and playing any of the 16 pads!
+              <span className="text-[11.5px] leading-relaxed text-slate-200">
+                <strong className="text-white">Real-Time Continuous Sampling:</strong> Hit{' '}
+              <span className="text-rose-400 font-bold">REC (EXT IN)</span> to capture real-time audio from Ableton continuously while simultaneously triggering and playing any of the {SP404_LEGACY_PROFILE.padsPerBank} pads!
             </span>
           </div>
 

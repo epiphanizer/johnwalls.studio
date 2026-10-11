@@ -175,7 +175,7 @@ const INITIAL_STUDIO_MODULES: StudioModule[] = [
   {
     id: 'sp404_1',
     type: 'sp404',
-    title: 'SP-404 MKII Sampler',
+    title: 'SP-404 Original / A',
     bypassed: false
   },
   {
@@ -1014,7 +1014,7 @@ export const App: React.FC = () => {
       const newSp: StudioSP404Module = {
         id: `sp404_${Date.now()}`,
         type: 'sp404',
-        title: spNum === 1 ? 'SP-404 MKII' : `SP-404 MKII #${spNum}`,
+        title: spNum === 1 ? 'SP-404 Original / A' : `SP-404 Original / A #${spNum}`,
         bypassed: false
       };
       setModules((prev) => [...prev, newSp]);
@@ -1865,4 +1865,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

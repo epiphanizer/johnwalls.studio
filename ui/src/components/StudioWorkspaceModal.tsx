@@ -136,7 +136,7 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
               </div>
 
               <h3 className="text-base font-black text-white uppercase tracking-wider mb-1">
-                SP-404 MKII
+                SP-404 Original / A
               </h3>
               <p className="text-xs text-slate-300 mb-4 leading-relaxed">
                 Live Performance Sampler, Roland SD Card Manager, Chromatic Transpose & Real-Time Simultaneous Recording.
@@ -150,7 +150,7 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
                   <span className="text-[#ff5500]">✓</span> Live Ableton input recording & resample WHILE playing pads
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[#ff5500]">✓</span> Chromatic 16-pad pitch keyboard & global transpose
+                  <span className="text-[#ff5500]">✓</span> Chromatic 12-pad pitch keyboard & global transpose
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[#ff5500]">✓</span> Authentic MFX (Vinyl Sim 33/45, DJFX, Isolator, Cassette)

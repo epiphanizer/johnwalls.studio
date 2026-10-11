@@ -2,7 +2,7 @@
  * sharedAudioContext.ts
  *
  * Provides a single unified AudioContext instance shared across all studio modules
- * (Pedal Lab, SP-404 MKII, State Cockpit, and Waveform Visualizer).
+ * (Pedal Lab, SP-404 Original / A, State Cockpit, and Waveform Visualizer).
  *
  * This prevents cross-AudioContext connection DOMExceptions, browser audio thread
  * memory leaks, and webview crashes during module transitions.
