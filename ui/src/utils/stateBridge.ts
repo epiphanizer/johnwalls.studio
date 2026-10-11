@@ -1,4 +1,5 @@
 import { AbletonTrackInfo, AbletonSceneInfo, SuperColliderServerStatus, ReactiveMidiRule } from '../types';
+import { getTelemetryBaseUrl } from './nativeTransport';
 
 declare global {
   interface Window {
@@ -6,7 +7,12 @@ declare global {
   }
 }
 
-const DEFAULT_SERVER_URLS = ['http://127.0.0.1:3012', 'http://127.0.0.1:3013', 'http://127.0.0.1:3014'];
+const DEFAULT_SERVER_URLS = Array.from(new Set([
+  getTelemetryBaseUrl(),
+  'http://127.0.0.1:3012',
+  'http://127.0.0.1:3013',
+  'http://127.0.0.1:3014'
+]));
 
 export const DEFAULT_REACTIVE_MIDI_RULES: ReactiveMidiRule[] = [
   {

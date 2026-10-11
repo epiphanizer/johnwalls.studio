@@ -1,6 +1,7 @@
 #include "SP404Engine.h"
 #include <cmath>
 #include <random>
+#include <cstring>
 
 namespace johnwalls::johnwalls {
 
@@ -101,7 +102,7 @@ void SP404Engine::triggerPadLocked(int bankIndex, int padId, float velocity, flo
     if (m_isChromatic.load(std::memory_order_relaxed)) {
         targetBank = m_chromaticRootBank.load(std::memory_order_relaxed);
         targetPad = m_chromaticRootPad.load(std::memory_order_relaxed);
-        // Pad 1 = -12st, Pad 13 = 0st, Pad 16 = +3st
+        // Legacy profile chromatic range: pad 1 = -12st through pad 12 = -1st.
         effectivePitch = static_cast<float>((padId - 1) - 12);
     }
 
@@ -218,10 +219,10 @@ void SP404Engine::drainMidiLocked() {
                 // Chromatic map: Note 60 (Middle C) = 0 semitone offset
                 triggerPadLocked(rootBank, rootPad, ev.velocity, static_cast<float>(ev.note - 60));
             } else if (ev.note >= 36 && ev.note <= 51) {
-                // Standard Roland SP-404 Drum Map: C1 (36) -> Pad 1 ... D#2 (51) -> Pad 16
+                // Standard legacy map: C1 (36) -> Pad 1 ... B1 (47) -> Pad 12.
                 triggerPadLocked(0, (ev.note - 36) + 1, ev.velocity, 0.0f);
-            } else if (ev.note >= 52 && ev.note <= 67) {
-                triggerPadLocked(1, (ev.note - 52) + 1, ev.velocity, 0.0f); // Bank B
+            } else if (ev.note >= 48 && ev.note <= 59) {
+                triggerPadLocked(1, (ev.note - 48) + 1, ev.velocity, 0.0f); // Bank B
             }
         } else {
             if (chromatic) {
@@ -272,7 +273,9 @@ float SP404Engine::getParam(const std::string& name) const {
 }
 
 bool SP404Engine::loadCustomSample(int bankIndex, int padId, const float* left, const float* right,
-                                   size_t numSamples, float sampleRate, const std::string& label) {
+                                   size_t numSamples, float sampleRate, const std::string& label,
+                                   float pitchSemitones, float volume, float pan,
+                                   bool isLoop, bool isReverse, int muteGroup) {
     auto* pad = getPad(bankIndex, padId);
     if (!pad || numSamples == 0 || !left) return false;
 
@@ -285,9 +288,189 @@ bool SP404Engine::loadCustomSample(int bankIndex, int padId, const float* left, 
     }
     pad->sampleRate = (sampleRate > 8000.0f) ? sampleRate : 48000.0f;
     pad->durationSeconds = static_cast<float>(numSamples) / pad->sampleRate;
+    pad->pitchSemitones = std::clamp(pitchSemitones, -24.0f, 24.0f);
+    pad->volume = std::clamp(volume, 0.0f, 1.5f);
+    pad->pan = std::clamp(pan, -1.0f, 1.0f);
+    pad->isLoop = isLoop;
+    pad->isReverse = isReverse;
+    pad->muteGroup = std::max(0, muteGroup);
     if (!label.empty()) {
         pad->label = label;
     }
+    return true;
+}
+
+void SP404Engine::clearCustomSamples() {
+    std::lock_guard<std::mutex> lock(m_voiceMutex);
+    for (auto& bank : m_banks) {
+        for (auto& pad : bank) {
+            pad.sampleL.clear();
+            pad.sampleR.clear();
+            pad.label = "EMPTY";
+            pad.category = "custom";
+            pad.sampleRate = 48000.0f;
+            pad.durationSeconds = 0.0f;
+            pad.pitchSemitones = 0.0f;
+            pad.volume = 1.0f;
+            pad.pan = 0.0f;
+            pad.isLoop = false;
+            pad.isReverse = false;
+            pad.muteGroup = 0;
+        }
+    }
+    for (auto& voice : m_voices) {
+        voice.active = false;
+        voice.fadingOut = false;
+        voice.fadeOutGain = 1.0f;
+    }
+}
+
+std::vector<uint8_t> SP404Engine::serializeState() const {
+    std::lock_guard<std::mutex> lock(m_voiceMutex);
+    std::vector<uint8_t> result;
+    result.reserve(4096);
+
+    auto appendBytes = [&result](const void* source, size_t byteCount) {
+        const auto* bytes = static_cast<const uint8_t*>(source);
+        result.insert(result.end(), bytes, bytes + byteCount);
+    };
+    auto appendValue = [&appendBytes](const auto& value) {
+        appendBytes(&value, sizeof(value));
+    };
+    auto appendString = [&appendValue, &appendBytes](const std::string& value) {
+        const uint32_t length = static_cast<uint32_t>(value.size());
+        appendValue(length);
+        if (length > 0) appendBytes(value.data(), length);
+    };
+
+    constexpr uint32_t magic = 0x4A573334; // "JW34"
+    constexpr uint32_t version = 1;
+    appendValue(magic);
+    appendValue(version);
+
+    const float volume = m_volume.load(std::memory_order_relaxed);
+    const float ctrl1 = m_ctrl1.load(std::memory_order_relaxed);
+    const float ctrl2 = m_ctrl2.load(std::memory_order_relaxed);
+    const float ctrl3 = m_ctrl3.load(std::memory_order_relaxed);
+    const int32_t activeMfx = m_activeMfx.load(std::memory_order_relaxed);
+    const int32_t placement = static_cast<int32_t>(m_placement.load(std::memory_order_relaxed));
+    const uint8_t bypassed = m_bypassed.load(std::memory_order_relaxed) ? 1 : 0;
+    const uint8_t chromatic = m_isChromatic.load(std::memory_order_relaxed) ? 1 : 0;
+    const int32_t rootBank = m_chromaticRootBank.load(std::memory_order_relaxed);
+    const int32_t rootPad = m_chromaticRootPad.load(std::memory_order_relaxed);
+    appendValue(volume); appendValue(ctrl1); appendValue(ctrl2); appendValue(ctrl3);
+    appendValue(activeMfx); appendValue(placement); appendValue(bypassed); appendValue(chromatic);
+    appendValue(rootBank); appendValue(rootPad);
+
+    for (const auto& bank : m_banks) {
+        for (const auto& pad : bank) {
+            const uint32_t leftCount = static_cast<uint32_t>(pad.sampleL.size());
+            const uint32_t rightCount = static_cast<uint32_t>(pad.sampleR.size());
+            const float sampleRate = pad.sampleRate;
+            const float duration = pad.durationSeconds;
+            const float pitch = pad.pitchSemitones;
+            const float padVolume = pad.volume;
+            const float pan = pad.pan;
+            const uint8_t loop = pad.isLoop ? 1 : 0;
+            const uint8_t reverse = pad.isReverse ? 1 : 0;
+            const int32_t muteGroup = pad.muteGroup;
+            appendValue(leftCount); appendValue(rightCount);
+            appendValue(sampleRate); appendValue(duration); appendValue(pitch);
+            appendValue(padVolume); appendValue(pan); appendValue(loop); appendValue(reverse);
+            appendValue(muteGroup);
+            appendString(pad.label); appendString(pad.category);
+            if (leftCount > 0) appendBytes(pad.sampleL.data(), leftCount * sizeof(float));
+            if (rightCount > 0) appendBytes(pad.sampleR.data(), rightCount * sizeof(float));
+        }
+    }
+    return result;
+}
+
+bool SP404Engine::deserializeState(const uint8_t* data, size_t size) {
+    if (data == nullptr || size < sizeof(uint32_t) * 2) return false;
+
+    const uint8_t* cursor = data;
+    const uint8_t* end = data + size;
+    auto readBytes = [&cursor, end](void* destination, size_t byteCount) -> bool {
+        if (byteCount > static_cast<size_t>(end - cursor)) return false;
+        std::memcpy(destination, cursor, byteCount);
+        cursor += byteCount;
+        return true;
+    };
+    auto readValue = [&readBytes](auto& value) -> bool {
+        return readBytes(&value, sizeof(value));
+    };
+    auto readString = [&readValue, &readBytes](std::string& value) -> bool {
+        uint32_t length = 0;
+        if (!readValue(length) || length > 1024) return false;
+        value.resize(length);
+        return length == 0 || readBytes(value.data(), length);
+    };
+
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    if (!readValue(magic) || !readValue(version) || magic != 0x4A573334 || version != 1) return false;
+
+    float volume = 0.0f, ctrl1 = 0.0f, ctrl2 = 0.0f, ctrl3 = 0.0f;
+    int32_t activeMfx = 0, placement = 0, rootBank = 0, rootPad = 11;
+    uint8_t bypassed = 0, chromatic = 0;
+    if (!readValue(volume) || !readValue(ctrl1) || !readValue(ctrl2) || !readValue(ctrl3)
+        || !readValue(activeMfx) || !readValue(placement) || !readValue(bypassed)
+        || !readValue(chromatic) || !readValue(rootBank) || !readValue(rootPad)) return false;
+
+    std::array<std::array<SP404PadData, kPadsPerBank>, kNumBanks> loaded{};
+    size_t totalSampleBytes = 0;
+    constexpr size_t kMaxSerializedSampleBytes = 256u * 1024u * 1024u;
+    for (size_t bankIndex = 0; bankIndex < kNumBanks; ++bankIndex) {
+        for (size_t padIndex = 0; padIndex < kPadsPerBank; ++padIndex) {
+            auto& pad = loaded[bankIndex][padIndex];
+            pad.id = static_cast<int>(padIndex + 1);
+            pad.bank = static_cast<int>(bankIndex);
+            uint32_t leftCount = 0, rightCount = 0;
+            uint8_t loop = 0, reverse = 0;
+            int32_t muteGroup = 0;
+            if (!readValue(leftCount) || !readValue(rightCount)
+                || leftCount > 60u * 60u * 192000u || rightCount > 60u * 60u * 192000u) return false;
+            if (!readValue(pad.sampleRate) || !readValue(pad.durationSeconds)
+                || !readValue(pad.pitchSemitones) || !readValue(pad.volume)
+                || !readValue(pad.pan) || !readValue(loop) || !readValue(reverse)
+                || !readValue(muteGroup) || !readString(pad.label) || !readString(pad.category)) return false;
+
+            const size_t leftBytes = static_cast<size_t>(leftCount) * sizeof(float);
+            const size_t rightBytes = static_cast<size_t>(rightCount) * sizeof(float);
+            if (leftBytes > kMaxSerializedSampleBytes - totalSampleBytes
+                || rightBytes > kMaxSerializedSampleBytes - totalSampleBytes - leftBytes) return false;
+            pad.sampleL.resize(leftCount);
+            pad.sampleR.resize(rightCount);
+            if ((leftBytes > 0 && !readBytes(pad.sampleL.data(), leftBytes))
+                || (rightBytes > 0 && !readBytes(pad.sampleR.data(), rightBytes))) return false;
+            totalSampleBytes += leftBytes + rightBytes;
+            pad.isLoop = loop != 0;
+            pad.isReverse = reverse != 0;
+            pad.muteGroup = std::max(0, muteGroup);
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_voiceMutex);
+        m_banks = std::move(loaded);
+        for (auto& voice : m_voices) {
+            voice.active = false;
+            voice.fadingOut = false;
+            voice.fadeOutGain = 1.0f;
+        }
+    }
+    m_volume.store(std::clamp(volume, 0.0f, 10.0f), std::memory_order_relaxed);
+    m_ctrl1.store(std::clamp(ctrl1, 0.0f, 10.0f), std::memory_order_relaxed);
+    m_ctrl2.store(std::clamp(ctrl2, 0.0f, 10.0f), std::memory_order_relaxed);
+    m_ctrl3.store(std::clamp(ctrl3, 0.0f, 10.0f), std::memory_order_relaxed);
+    m_activeMfx.store(std::clamp(activeMfx, 0, 5), std::memory_order_relaxed);
+    m_placement.store(placement > 0 ? SP404Placement::AfterPedals : SP404Placement::BeforePedals, std::memory_order_relaxed);
+    m_bypassed.store(bypassed != 0, std::memory_order_relaxed);
+    m_isChromatic.store(chromatic != 0, std::memory_order_relaxed);
+    m_chromaticRootBank.store(std::clamp(rootBank, 0, static_cast<int>(kNumBanks - 1)), std::memory_order_relaxed);
+    m_chromaticRootPad.store(std::clamp(rootPad, 1, static_cast<int>(kPadsPerBank)), std::memory_order_relaxed);
+    updateMfxFilters();
     return true;
 }
 

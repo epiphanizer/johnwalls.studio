@@ -83,7 +83,7 @@ public:
     void setReactiveMidiEnabled(bool enabled);
     bool isReactiveMidiEnabled() const;
 
-    // SP-404 MKII Real-Time Sampler Engine methods
+    // Legacy SP-404 Original / A real-time sampler engine methods
     SP404Engine& getSP404Engine() noexcept { return m_sp404Engine; }
     void triggerSP404Pad(int bankIndex, int padId, float velocity = 1.0f, float semitoneOffset = 0.0f);
     void releaseSP404Pad(int bankIndex, int padId);

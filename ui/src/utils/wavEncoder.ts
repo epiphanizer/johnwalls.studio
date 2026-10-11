@@ -1,6 +1,8 @@
 /**
  * Converts an AudioBuffer to a valid RIFF/WAVE standard 16-bit PCM WAV ArrayBuffer/Blob.
- * Compliant with Roland SP-404 MKII / SX hardware requirements (16-bit/48kHz PCM).
+ * Produces uncompressed 16-bit PCM WAV. The target rate is explicit because
+ * the legacy SP-404/SP-404A expects imported files to be treated as 44.1 kHz,
+ * while the MKII workflow uses different card/project rules.
  */
 export function audioBufferToWav(buffer: AudioBuffer, targetSampleRate: number = 48000): Blob {
   const numChannels = Math.min(buffer.numberOfChannels, 2);

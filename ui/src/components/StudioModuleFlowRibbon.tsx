@@ -295,8 +295,8 @@ export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = ({
             >
               <Disc size={13} className="text-[#ff5500]" />
               <div>
-                <div className="font-bold text-[10.5px]">SP-404 MKII Sampler</div>
-                <div className="text-[8.5px] text-slate-500">160 pads, live resample & MFX</div>
+                <div className="font-bold text-[10.5px]">SP-404 Original / A</div>
+                <div className="text-[8.5px] text-slate-500">120 pads, live resample & MFX</div>
               </div>
             </button>
             <button

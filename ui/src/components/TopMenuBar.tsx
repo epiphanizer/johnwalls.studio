@@ -198,7 +198,7 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
                 ? 'bg-[#ff5500]/25 text-[#ff8844] border border-[#ff5500]/60 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
-            title="Inspect SP-404 MKII Sampler"
+            title="Inspect SP-404 Original / A Sampler"
           >
             <span className={`w-1.5 h-1.5 rounded-full ${activeWorkspace === 'sp404' ? 'bg-[#ff5500]' : 'bg-slate-600'}`} />
             <span>SP-404</span>

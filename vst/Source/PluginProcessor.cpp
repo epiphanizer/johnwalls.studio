@@ -766,6 +766,12 @@ void JohnwallsStudioAudioProcessor::getStateInformation(juce::MemoryBlock& destD
     }
 
     stream.writeString(m_lastRackStateJson);
+
+    const auto sp404State = m_sp404Engine.serializeState();
+    stream.writeInt(static_cast<int>(sp404State.size()));
+    if (!sp404State.empty()) {
+        stream.write(sp404State.data(), sp404State.size());
+    }
 }
 
 void JohnwallsStudioAudioProcessor::setStateInformation(const void* data, int sizeInBytes) {
@@ -792,6 +798,17 @@ void JohnwallsStudioAudioProcessor::setStateInformation(const void* data, int si
             m_lastRackStateJson = stream.readString();
             if (!m_lastRackStateJson.isEmpty()) {
                 syncRackFromUI(juce::JSON::parse(m_lastRackStateJson));
+            }
+        }
+
+        const auto remainingBytes = stream.getNumBytesRemaining();
+        if (remainingBytes >= static_cast<int64_t>(sizeof(int))) {
+            const int stateSize = stream.readInt();
+            if (stateSize > 0 && static_cast<int64_t>(stateSize) <= stream.getNumBytesRemaining()) {
+                std::vector<uint8_t> state(static_cast<size_t>(stateSize));
+                if (stream.read(state.data(), static_cast<int>(state.size())) > 0) {
+                    m_sp404Engine.deserializeState(state.data(), state.size());
+                }
             }
         }
     } else {

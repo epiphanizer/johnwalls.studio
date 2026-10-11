@@ -2,12 +2,26 @@ import JSZip from 'jszip';
 import { audioBufferToWav, extractWaveformProfile } from '../utils/wavEncoder';
 import { generateDefaultSample } from '../utils/sp404DefaultSamples';
 import { getSharedAudioContext } from '../utils/sharedAudioContext';
+import { getTelemetryUrl, hasJuceNativeHost } from '../utils/nativeTransport';
+import {
+  getLegacyPadFilename,
+  listSP404Libraries,
+  loadSP404Library,
+  saveSP404Library,
+  SP404_LEGACY_BANKS,
+  SP404_LEGACY_PROFILE,
+  getSP404Profile,
+  isSP404HardwareProfile,
+  type SP404HardwareProfile,
+  type SP404HardwareProfileId,
+  type SP404LibraryManifest
+} from '../utils/sp404Library';
 
 export type BankLetter = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J';
 export type MFXType = 'vinyl' | 'djfx' | 'isolator' | 'cassette' | 'filter' | 'pitch';
 
 export interface SP404Pad {
-  id: number; // 1 to 16
+  id: number; // 1 to 12 on the legacy Original / A profile
   bank: BankLetter;
   label: string;
   category: 'kick' | 'snare' | 'hat' | 'perc' | 'vox' | 'sample' | 'bass' | 'fx' | 'custom';
@@ -23,6 +37,50 @@ export interface SP404Pad {
   muteGroup: number; // 0 = off, 1 = choke group
   isHit: boolean;
   isRecordingTarget?: boolean;
+  /** True when the restored native sampler has a sample even if the browser has no audio asset. */
+  nativeSampleAvailable?: boolean;
+}
+
+export interface NativeSP404PadState {
+  bank: number;
+  padId: number;
+  hasSample: boolean;
+  label: string;
+  category: string;
+  duration: number;
+  sampleRate: number;
+  pitch: number;
+  volume: number;
+  pan: number;
+  mode: 'oneshot' | 'gate' | 'loop';
+  reverse: boolean;
+  muteGroup: number;
+}
+
+export interface NativeSP404State {
+  source: 'native-sp404';
+  version: 1;
+  volume: number;
+  activeMfx: number;
+  ctrl1: number;
+  ctrl2: number;
+  ctrl3: number;
+  placement: 'before' | 'after';
+  bypassed: boolean;
+  chromatic: boolean;
+  chromaticRootBank: number;
+  chromaticRootPad: number;
+  pads: NativeSP404PadState[];
+}
+
+export interface SP404TransferProgress {
+  transferId: string;
+  bank: BankLetter;
+  padId: number;
+  label: string;
+  completedChunks: number;
+  totalChunks: number;
+  phase: 'starting' | 'transferring' | 'complete' | 'cancelled' | 'error';
 }
 
 export interface ActiveVoice {
@@ -52,13 +110,29 @@ function sendToHost(eventName: string, payload: any, fallbackHttpUrl?: string, h
     } catch {}
   }
 
-  if (fallbackHttpUrl) {
+  if (!handled && fallbackHttpUrl) {
     fetch(fallbackHttpUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(httpBody ?? payload)
     }).catch(() => {});
   }
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+function nextTransferId(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `sp404-transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export class SP404AudioEngine {
@@ -85,11 +159,13 @@ export class SP404AudioEngine {
   // Active playing voices
   private activeVoices: Map<string, ActiveVoice[]> = new Map();
 
-  // 10 Banks A-J with 16 pads each
+  // Legacy SP-404 profile: 10 banks A-J with 12 pads each.
   private banks: Record<BankLetter, SP404Pad[]>;
+  private hardwareProfile: SP404HardwareProfile = SP404_LEGACY_PROFILE;
 
   // Global Sampler Settings
   private globalTranspose: number = 0; // Semitones
+  private masterVolume: number = 8.5;
   private activeMFX: MFXType = 'vinyl';
   private ctrl1: number = 6.5;
   private ctrl2: number = 4.0;
@@ -118,9 +194,19 @@ export class SP404AudioEngine {
   // Callbacks
   private onStateChange: (() => void) | null = null;
   private onRecordingProgress: ((elapsedMs: number) => void) | null = null;
+  private onNativeState: ((state: NativeSP404State) => void) | null = null;
+  private onTransferProgress: ((progress: SP404TransferProgress) => void) | null = null;
+  private transferController = new AbortController();
+  private hasReceivedNativeState = false;
+  private lastNativeStateSignature = '';
 
   constructor() {
     this.banks = this.createInitialBanks();
+    if (typeof window !== 'undefined') {
+      window.__JWS_RECEIVE_SP404_NATIVE_STATE__ = (state: unknown) => {
+        this.applyNativeState(state);
+      };
+    }
   }
 
   public setOnStateChange(cb: () => void) {
@@ -129,6 +215,72 @@ export class SP404AudioEngine {
 
   public setOnRecordingProgress(cb: (elapsedMs: number) => void) {
     this.onRecordingProgress = cb;
+  }
+
+  public setOnNativeState(cb: (state: NativeSP404State) => void) {
+    this.onNativeState = cb;
+    const initialState = typeof window !== 'undefined' ? window.__JWS_SP404_NATIVE_STATE__ : undefined;
+    if (initialState) this.applyNativeState(initialState);
+  }
+
+  public setOnTransferProgress(cb: (progress: SP404TransferProgress) => void) {
+    this.onTransferProgress = cb;
+  }
+
+  public hasNativeState(): boolean {
+    return typeof window !== 'undefined' && Boolean(window.__JWS_SP404_NATIVE_STATE__);
+  }
+
+  private applyNativeState(value: unknown) {
+    if (!value || typeof value !== 'object') return;
+    const state = value as NativeSP404State;
+    if (state.source !== 'native-sp404' || state.version !== 1 || !Array.isArray(state.pads)) return;
+    const signature = JSON.stringify(state);
+    if (signature === this.lastNativeStateSignature) return;
+    this.lastNativeStateSignature = signature;
+
+    this.masterVolume = Number.isFinite(state.volume) ? state.volume : this.masterVolume;
+    const nativeMfx = ['vinyl', 'djfx', 'isolator', 'cassette', 'filter', 'pitch'][state.activeMfx] as MFXType | undefined;
+    if (nativeMfx) this.activeMFX = nativeMfx;
+    this.ctrl1 = Number.isFinite(state.ctrl1) ? state.ctrl1 : this.ctrl1;
+    this.ctrl2 = Number.isFinite(state.ctrl2) ? state.ctrl2 : this.ctrl2;
+    this.ctrl3 = Number.isFinite(state.ctrl3) ? state.ctrl3 : this.ctrl3;
+    this.isChromaticMode = Boolean(state.chromatic);
+    this.chromaticRootPad = {
+      bank: SP404_LEGACY_BANKS[Math.max(0, Math.min(SP404_LEGACY_BANKS.length - 1, state.chromaticRootBank))],
+      padId: Math.max(1, Math.min(SP404_LEGACY_PROFILE.padsPerBank, state.chromaticRootPad))
+    };
+
+    for (const nativePad of state.pads) {
+      const bank = SP404_LEGACY_BANKS[nativePad.bank];
+      const pad = bank ? this.getPad(bank, nativePad.padId) : undefined;
+      if (!pad) continue;
+      pad.label = nativePad.label || pad.label;
+      pad.category = nativePad.category as SP404Pad['category'];
+      pad.duration = nativePad.duration;
+      pad.sampleRate = nativePad.sampleRate;
+      pad.pitch = nativePad.pitch;
+      pad.volume = nativePad.volume;
+      pad.pan = nativePad.pan;
+      pad.mode = nativePad.mode;
+      pad.reverse = nativePad.reverse;
+      pad.muteGroup = nativePad.muteGroup;
+      pad.nativeSampleAvailable = nativePad.hasSample;
+      if (!this.hasReceivedNativeState && !nativePad.hasSample) {
+        pad.audioBuffer = null;
+        pad.waveform = [];
+      }
+    }
+    this.hasReceivedNativeState = true;
+
+    if (this.ctx) {
+      this.updateMFXNodes();
+      if (this.masterGain) {
+        this.masterGain.gain.setTargetAtTime((this.masterVolume / 10) * 0.85, this.ctx.currentTime, 0.05);
+      }
+    }
+    this.onNativeState?.(state);
+    this.onStateChange?.();
   }
 
   private createInitialBanks(): Record<BankLetter, SP404Pad[]> {
@@ -155,7 +307,7 @@ export class SP404AudioEngine {
     ];
 
     for (const letter of letters) {
-      result[letter] = Array.from({ length: 16 }, (_, idx) => {
+      result[letter] = Array.from({ length: SP404_LEGACY_PROFILE.padsPerBank }, (_, idx) => {
         const padId = idx + 1;
         const preset = letter === 'A' ? defaultLabelsBankA[idx] : null;
 
@@ -269,7 +421,9 @@ export class SP404AudioEngine {
   }
 
   private populateDefaultBankA() {
-    if (!this.ctx) return;
+    // A native project is authoritative. Do not repopulate browser demo
+    // samples after the native sampler has hydrated the page.
+    if (!this.ctx || this.hasReceivedNativeState) return;
     const bankA = this.banks['A'];
 
     const types = [
@@ -279,7 +433,7 @@ export class SP404AudioEngine {
       'bass', 'bass', 'vinyl', 'reverse'
     ];
 
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < SP404_LEGACY_PROFILE.padsPerBank; i++) {
       if (!bankA[i].audioBuffer) {
         const buffer = generateDefaultSample(this.ctx, types[i]);
         bankA[i].audioBuffer = buffer;
@@ -317,7 +471,7 @@ export class SP404AudioEngine {
     if (this.isChromaticMode) {
       targetBank = this.chromaticRootPad.bank;
       targetPadId = this.chromaticRootPad.padId;
-      // Pad 1 = -12st, Pad 13 = 0st (Root), Pad 16 = +3st
+      // Legacy profile exposes twelve chromatic pads.
       effectivePitch = (padId - 1) - 12;
     }
 
@@ -330,7 +484,7 @@ export class SP404AudioEngine {
         chromaticOffset: effectivePitch,
         velocity: velocity ?? 1.0
       },
-      'http://127.0.0.1:3012/sp404/trigger'
+      getTelemetryUrl('/sp404/trigger')
     );
 
     if (!this.ctx) {
@@ -424,7 +578,7 @@ export class SP404AudioEngine {
     sendToHost(
       'sp404ReleasePad',
       { bank, padId },
-      'http://127.0.0.1:3012/sp404/release'
+      getTelemetryUrl('/sp404/release')
     );
 
     if (!this.ctx) return;
@@ -450,12 +604,12 @@ export class SP404AudioEngine {
     sendToHost(
       'sp404StopAll',
       {},
-      'http://127.0.0.1:3012/sp404/stop_all'
+      getTelemetryUrl('/sp404/stop_all')
     );
     sendToHost(
       'sp404SetParam',
       { param: 'stop_all', value: 1.0 },
-      'http://127.0.0.1:3012/sp404/param'
+      getTelemetryUrl('/sp404/param')
     );
 
     if (!this.ctx) return;
@@ -656,6 +810,7 @@ export class SP404AudioEngine {
       pad.label = `${this.recordMode === 'resample' ? 'RESAMPLE' : 'REC'} ${this.targetRecordBank}${this.targetRecordPadId}`;
       pad.category = 'sample';
       pad.isRecordingTarget = false;
+      void this.syncPadToHost(this.targetRecordBank, pad);
     }
 
     this.onStateChange?.();
@@ -670,7 +825,8 @@ export class SP404AudioEngine {
 
   /**
    * Imports files from an SD Card or drag-and-drop batch.
-   * Recognizes Roland SP-404MKII format: A01.WAV ... J16.WAV or standard sample names.
+   * Recognizes legacy Roland SP-404/SP-404A names such as A_01.WAV and
+   * A_01.AIF, plus compact A01.WAV names from user libraries.
    */
   public async importFromCardFiles(files: FileList | File[]): Promise<{ loadedCount: number }> {
     await this.initAudio();
@@ -685,8 +841,9 @@ export class SP404AudioEngine {
         continue;
       }
 
-      // Check for Roland SP-404 MKII pattern: e.g. "A01.WAV", "SMPL_A01.WAV", "B14.WAV"
-      const match = name.match(/([A-J])([0-1]?[0-9])\.WAV$/i);
+      // Accept both user-library names (A_01.WAV) and Roland card names
+      // (A0000001.WAV / A0000012.WAV). Card imports are ordered by filename.
+      const match = name.match(/^(?:SMPL_)?([A-J])[_-]?0*([0-9]{1,2})\.(WAV|AIFF|AIF)$/i);
       let targetBank: BankLetter = 'A';
       let targetPadId = 1;
 
@@ -695,7 +852,7 @@ export class SP404AudioEngine {
         targetPadId = parseInt(match[2], 10);
       } else {
         // Find next empty pad in current active bank
-        const emptyPad = this.findFirstEmptyPad();
+        const emptyPad = this.findFirstEmptyPad(12);
         if (emptyPad) {
           targetBank = emptyPad.bank;
           targetPadId = emptyPad.id;
@@ -704,7 +861,7 @@ export class SP404AudioEngine {
         }
       }
 
-      if (targetPadId < 1 || targetPadId > 16) continue;
+      if (targetPadId < 1 || targetPadId > this.hardwareProfile.padsPerBank) continue;
 
       try {
         const arrayBuf = await file.arrayBuffer();
@@ -716,6 +873,7 @@ export class SP404AudioEngine {
           pad.duration = decoded.duration;
           pad.waveform = extractWaveformProfile(decoded, 32);
           pad.label = file.name.replace(/\.[^/.]+$/, '').slice(0, 14);
+          await this.syncPadToHost(targetBank, pad);
           count++;
         }
       } catch (err) {
@@ -728,36 +886,275 @@ export class SP404AudioEngine {
   }
 
   /**
-   * Packages all active pads into an authentic Roland SP-404MKII SD Card directory:
-   * /ROLAND/SP-404MKII/SMPL/A01.WAV ... J16.WAV
+   * Packages card-import files for one legacy hardware profile. The hardware
+   * card must already be formatted by the device; each bank is isolated so a
+   * user can copy one batch at a time and choose its destination pad on-device.
    */
-  public async exportToCardZip(): Promise<Blob> {
+  public async exportToCardZip(profile?: SP404HardwareProfile): Promise<Blob> {
+    const targetProfile = profile ?? this.hardwareProfile;
     const zip = new JSZip();
-    const smplFolder = zip.folder('ROLAND')?.folder('SP-404MKII')?.folder('SMPL');
-
-    const letters: BankLetter[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-    let manifestText = `=== ROLAND SP-404 MKII SD CARD TEMPLATE ===\nGenerated by johnwalls.studio\n\n`;
+    const importBanks = zip.folder('IMPORT_BANKS');
+    const letters = SP404_LEGACY_BANKS;
+    let manifestText = `=== ${targetProfile.label} IMPORT PACKAGE ===\nGenerated by johnwalls.studio\n\n`;
+    const cardInstructions = targetProfile.cardLayout === 'roland-import'
+      ? `Copy the contents of one IMPORT_BANKS/BANK_X/ROLAND/IMPORT folder into the formatted card's /ROLAND/IMPORT folder. On the SP-404A, run IMPORT, select the target bank and starting pad, then confirm. The SP-404A imports files in filename order.`
+      : `Copy the contents of one IMPORT_BANKS/BANK_X/FUGUEFAT folder into the root FUGUEFAT volume of a CompactFlash card formatted by the SP-404 Original. On the unit, choose the target bank and starting pad, then confirm the import.`;
 
     for (const bank of letters) {
       const pads = this.banks[bank];
-      for (const pad of pads) {
-        if (pad.audioBuffer && smplFolder) {
-          const fileName = `${bank}${pad.id.toString().padStart(2, '0')}.WAV`;
-          const wavBlob = audioBufferToWav(pad.audioBuffer, 48000);
-          smplFolder.file(fileName, wavBlob);
+      const bankFolder = importBanks?.folder(`BANK_${bank}`);
+      const destinationFolder = targetProfile.cardLayout === 'roland-import'
+        ? bankFolder?.folder('ROLAND/IMPORT')
+        : bankFolder?.folder('FUGUEFAT');
+      for (const pad of pads.slice(0, targetProfile.padsPerBank)) {
+        if (pad.audioBuffer && destinationFolder) {
+          const fileName = getLegacyPadFilename(bank, pad.id, targetProfile.audioExtension);
+          const audioBlob = audioBufferToWav(pad.audioBuffer, targetProfile.sampleRate);
+          destinationFolder.file(fileName, audioBlob);
           manifestText += `Bank ${bank} Pad ${pad.id.toString().padStart(2, '0')} -> ${fileName} (${pad.label}, ${pad.duration.toFixed(2)}s)\n`;
         }
       }
     }
 
-    zip.file('README_SP404_IMPORT.txt', manifestText);
+    zip.file('README_SP404_IMPORT.txt', `${manifestText}\n${cardInstructions}\nThis is a sample-import package, not a proprietary full-card backup. Existing samples at the destination may be overwritten.\n`);
     return await zip.generateAsync({ type: 'blob' });
   }
 
-  private findFirstEmptyPad(): { bank: BankLetter; id: number } | null {
+  public setHardwareProfile(profileId: SP404HardwareProfileId) {
+    this.hardwareProfile = getSP404Profile(profileId);
+  }
+
+  public getHardwareProfile(): SP404HardwareProfile {
+    return this.hardwareProfile;
+  }
+
+  private async syncPadToHost(bank: BankLetter, pad: SP404Pad): Promise<void> {
+    if (!hasJuceNativeHost() || !pad.audioBuffer) return;
+    const controller = this.transferController;
+    const transferId = nextTransferId();
+    const chunkSize = 96 * 1024;
+    try {
+      const wavBase64 = await blobToBase64(audioBufferToWav(pad.audioBuffer, this.hardwareProfile.sampleRate));
+      const totalChunks = Math.max(1, Math.ceil(wavBase64.length / chunkSize));
+      const metadata = {
+        transferId,
+        bank: SP404_LEGACY_BANKS.indexOf(bank),
+        padId: pad.id,
+        label: pad.label,
+        totalBytes: wavBase64.length,
+        totalChunks,
+        pitch: pad.pitch,
+        volume: pad.volume,
+        pan: pad.pan,
+        loop: pad.mode === 'loop',
+        reverse: pad.reverse,
+        muteGroup: pad.muteGroup
+      };
+
+      sendToHost('sp404LoadSampleBegin', metadata);
+      this.onTransferProgress?.({
+        transferId,
+        bank,
+        padId: pad.id,
+        label: pad.label,
+        completedChunks: 0,
+        totalChunks,
+        phase: 'starting'
+      });
+
+      for (let index = 0; index < totalChunks; index += 1) {
+        if (controller.signal.aborted) {
+          sendToHost('sp404CancelSampleTransfer', { transferId });
+          this.onTransferProgress?.({ transferId, bank, padId: pad.id, label: pad.label, completedChunks: index, totalChunks, phase: 'cancelled' });
+          return;
+        }
+        sendToHost('sp404LoadSampleChunk', {
+          transferId,
+          index,
+          data: wavBase64.slice(index * chunkSize, (index + 1) * chunkSize)
+        });
+        this.onTransferProgress?.({ transferId, bank, padId: pad.id, label: pad.label, completedChunks: index + 1, totalChunks, phase: 'transferring' });
+        // Yield between chunks so a large set does not monopolize the WebView.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+
+      if (controller.signal.aborted) {
+        sendToHost('sp404CancelSampleTransfer', { transferId });
+        this.onTransferProgress?.({ transferId, bank, padId: pad.id, label: pad.label, completedChunks: totalChunks, totalChunks, phase: 'cancelled' });
+        return;
+      }
+
+      sendToHost('sp404LoadSampleEnd', { transferId });
+      pad.nativeSampleAvailable = true;
+      this.onTransferProgress?.({ transferId, bank, padId: pad.id, label: pad.label, completedChunks: totalChunks, totalChunks, phase: 'complete' });
+    } catch (err) {
+      this.onTransferProgress?.({ transferId, bank, padId: pad.id, label: pad.label, completedChunks: 0, totalChunks: 0, phase: 'error' });
+      console.warn(`Could not sync SP-404 pad ${bank}${pad.id} to native sampler:`, err);
+    }
+  }
+
+  public cancelSampleTransfers() {
+    this.transferController.abort();
+    this.transferController = new AbortController();
+    if (hasJuceNativeHost()) sendToHost('sp404CancelSampleTransfer', {});
+  }
+
+  private clearNativeSamples() {
+    this.cancelSampleTransfers();
+    if (hasJuceNativeHost()) {
+      sendToHost('sp404ClearSamples', {});
+    }
+  }
+
+  public async saveLibrary(name: string, profile: SP404HardwareProfile = this.hardwareProfile): Promise<SP404LibraryManifest> {
+    const now = new Date().toISOString();
+    const manifest: SP404LibraryManifest = {
+      format: 'johnwalls-sp404-library',
+      version: 2,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `set-${Date.now()}`,
+      name: name.trim() || 'Untitled SP-404 Set',
+      createdAt: now,
+      updatedAt: now,
+      hardware: profile,
+      pads: [],
+      settings: {
+        volume: this.masterVolume,
+        activeMFX: this.activeMFX,
+        ctrl1: this.ctrl1,
+        ctrl2: this.ctrl2,
+        ctrl3: this.ctrl3,
+        globalTranspose: this.globalTranspose,
+        isChromaticMode: this.isChromaticMode,
+        chromaticRootPad: this.chromaticRootPad
+      }
+    };
+    const assets: Record<string, Blob> = {};
+
+    for (const bank of SP404_LEGACY_BANKS) {
+      for (const pad of this.banks[bank].slice(0, profile.padsPerBank)) {
+        const audioFile = pad.audioBuffer ? `audio/${getLegacyPadFilename(bank, pad.id)}` : null;
+        if (pad.audioBuffer && audioFile) {
+          assets[audioFile] = audioBufferToWav(pad.audioBuffer, profile.sampleRate);
+        }
+        manifest.pads.push({
+          bank,
+          padId: pad.id,
+          label: pad.label,
+          category: pad.category,
+          audioFile,
+          duration: pad.duration,
+          sourceSampleRate: pad.sampleRate,
+          pitch: pad.pitch,
+          volume: pad.volume,
+          pan: pad.pan,
+          mode: pad.mode,
+          reverse: pad.reverse,
+          muteGroup: pad.muteGroup
+        });
+      }
+    }
+
+    await saveSP404Library({ manifest, assets });
+    return manifest;
+  }
+
+  public async listLibraries(): Promise<SP404LibraryManifest[]> {
+    return listSP404Libraries();
+  }
+
+  public async exportLibraryPackage(name: string, profile: SP404HardwareProfile = this.hardwareProfile): Promise<Blob> {
+    const manifest = await this.saveLibrary(name, profile);
+    const stored = await loadSP404Library(manifest.id);
+    if (!stored) throw new Error('Saved SP-404 set could not be reopened for export.');
+
+    const zip = new JSZip();
+    zip.file('manifest.json', JSON.stringify(stored.manifest, null, 2));
+    for (const [path, asset] of Object.entries(stored.assets)) {
+      zip.file(path, asset);
+    }
+    return zip.generateAsync({ type: 'blob' });
+  }
+
+  public async importLibraryPackage(file: File): Promise<SP404LibraryManifest> {
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const manifestEntry = zip.file('manifest.json');
+    if (!manifestEntry) throw new Error('This file is not a johnwalls.studio SP-404 library.');
+
+    const rawManifest = JSON.parse(await manifestEntry.async('text')) as Partial<SP404LibraryManifest>;
+    if (rawManifest.format !== 'johnwalls-sp404-library' || (rawManifest.version !== 1 && rawManifest.version !== 2)) {
+      throw new Error('Unsupported SP-404 library format.');
+    }
+    const hardwareId = rawManifest.hardware?.id;
+    if (!hardwareId || !isSP404HardwareProfile(rawManifest.hardware)) {
+      throw new Error('This library targets a different SP-404 hardware profile.');
+    }
+    const manifest = {
+      ...rawManifest,
+      version: 2,
+      hardware: getSP404Profile(hardwareId)
+    } as SP404LibraryManifest;
+
+    const assets: Record<string, Blob> = {};
+    for (const item of manifest.pads) {
+      if (!item.audioFile) continue;
+      const entry = zip.file(item.audioFile);
+      if (entry) {
+        assets[item.audioFile] = await entry.async('blob');
+      }
+    }
+    await saveSP404Library({ manifest, assets });
+    await this.loadLibrary(manifest.id);
+    return manifest;
+  }
+
+  public async loadLibrary(id: string): Promise<boolean> {
+    const stored = await loadSP404Library(id);
+    if (!stored || !isSP404HardwareProfile(stored.manifest.hardware)) return false;
+    this.hardwareProfile = getSP404Profile(stored.manifest.hardware.id);
+    await this.initAudio();
+    this.clearNativeSamples();
+
+    for (const item of stored.manifest.pads) {
+      const pad = this.getPad(item.bank, item.padId);
+      if (!pad) continue;
+      pad.label = item.label;
+      pad.category = item.category as SP404Pad['category'];
+      pad.pitch = item.pitch;
+      pad.volume = item.volume;
+      pad.pan = item.pan;
+      pad.mode = item.mode;
+      pad.reverse = item.reverse;
+      pad.muteGroup = item.muteGroup;
+      const audioBlob = item.audioFile ? stored.assets[item.audioFile] : undefined;
+      if (audioBlob && this.ctx) {
+        pad.audioBuffer = await this.ctx.decodeAudioData(await audioBlob.arrayBuffer());
+        pad.duration = pad.audioBuffer.duration;
+        pad.sampleRate = pad.audioBuffer.sampleRate;
+        pad.waveform = extractWaveformProfile(pad.audioBuffer, 32);
+        await this.syncPadToHost(item.bank, pad);
+      } else {
+        pad.audioBuffer = null;
+        pad.duration = 0;
+        pad.waveform = [];
+      }
+    }
+
+    const settings = stored.manifest.settings;
+    this.setVolume(settings.volume);
+    this.setMFXType(settings.activeMFX as MFXType);
+    this.setCtrl1(settings.ctrl1);
+    this.setCtrl2(settings.ctrl2);
+    this.setCtrl3(settings.ctrl3);
+    this.setGlobalTranspose(settings.globalTranspose);
+    this.setChromaticMode(settings.isChromaticMode, settings.chromaticRootPad.bank, settings.chromaticRootPad.padId);
+    this.onStateChange?.();
+    return true;
+  }
+
+  private findFirstEmptyPad(padsPerBank: number = SP404_LEGACY_PROFILE.padsPerBank): { bank: BankLetter; id: number } | null {
     const letters: BankLetter[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     for (const b of letters) {
-      for (const p of this.banks[b]) {
+      for (const p of this.banks[b].slice(0, padsPerBank)) {
         if (!p.audioBuffer) return { bank: b, id: p.id };
       }
     }
@@ -767,13 +1164,14 @@ export class SP404AudioEngine {
   // --- MFX Engine Controls & Volume ---
 
   public setVolume(val: number) {
+    this.masterVolume = Math.max(0, Math.min(10, val));
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime((val / 10) * 0.85, this.ctx.currentTime, 0.05);
+      this.masterGain.gain.setTargetAtTime((this.masterVolume / 10) * 0.85, this.ctx.currentTime, 0.05);
     }
     sendToHost(
       'sp404SetParam',
       { param: 'volume', value: val },
-      'http://127.0.0.1:3012/sp404/param'
+      getTelemetryUrl('/sp404/param')
     );
   }
 
@@ -784,7 +1182,7 @@ export class SP404AudioEngine {
     sendToHost(
       'sp404SetParam',
       { param: 'mfx', value: mfxIdx },
-      'http://127.0.0.1:3012/sp404/param'
+      getTelemetryUrl('/sp404/param')
     );
     this.onStateChange?.();
   }
@@ -792,19 +1190,19 @@ export class SP404AudioEngine {
   public setCtrl1(val: number) {
     this.ctrl1 = val;
     this.updateMFXNodes();
-    sendToHost('sp404SetParam', { param: 'ctrl1', value: val }, 'http://127.0.0.1:3012/sp404/param');
+    sendToHost('sp404SetParam', { param: 'ctrl1', value: val }, getTelemetryUrl('/sp404/param'));
   }
 
   public setCtrl2(val: number) {
     this.ctrl2 = val;
     this.updateMFXNodes();
-    sendToHost('sp404SetParam', { param: 'ctrl2', value: val }, 'http://127.0.0.1:3012/sp404/param');
+    sendToHost('sp404SetParam', { param: 'ctrl2', value: val }, getTelemetryUrl('/sp404/param'));
   }
 
   public setCtrl3(val: number) {
     this.ctrl3 = val;
     this.updateMFXNodes();
-    sendToHost('sp404SetParam', { param: 'ctrl3', value: val }, 'http://127.0.0.1:3012/sp404/param');
+    sendToHost('sp404SetParam', { param: 'ctrl3', value: val }, getTelemetryUrl('/sp404/param'));
   }
 
   public setVinylRpm(is33: boolean) {
@@ -830,7 +1228,7 @@ export class SP404AudioEngine {
     sendToHost(
       'sp404SetParam',
       { param: 'chromatic', value: enabled ? 1.0 : 0.0 },
-      'http://127.0.0.1:3012/sp404/param'
+      getTelemetryUrl('/sp404/param')
     );
     this.onStateChange?.();
   }

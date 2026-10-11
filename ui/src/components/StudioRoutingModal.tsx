@@ -216,7 +216,7 @@ export const StudioRoutingModal: React.FC<StudioRoutingModalProps> = ({
                       {/* Module Quick Spec */}
                       <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[9.5px] text-slate-400">
                         {isSp404 ? (
-                          <span>160 Samples · Bank A-J</span>
+                          <span>120 Samples · Bank A-J</span>
                         ) : isState ? (
                           <span>Telemetry & SC Bridge</span>
                         ) : (
@@ -355,12 +355,12 @@ export const StudioRoutingModal: React.FC<StudioRoutingModalProps> = ({
               </div>
             </div>
 
-            {/* Right: SP-404 MKII Signal Bus Routing */}
+            {/* Right: legacy SP-404 Signal Bus Routing */}
             <div className="p-5 bg-[#121622] border border-slate-800 rounded-xl space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Disc size={14} className="text-[#ff5500]" />
-                  SP-404 MKII Signal Bus Routing
+                  SP-404 Original / A Signal Bus Routing
                 </span>
                 <span className="text-[9.5px] px-2 py-0.5 rounded font-black bg-[#ff5500]/20 text-[#ff8844] border border-[#ff5500]/40">
                   {sp404Order === 'before' ? 'PRE-EFFECTS LOOP' : 'POST-EFFECTS / DIRECT'}
