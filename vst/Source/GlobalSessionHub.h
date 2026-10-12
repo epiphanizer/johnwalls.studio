@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
+#include "AudioTakeRecorder.h"
 #include <string>
 #include <vector>
 #include <mutex>
@@ -31,9 +32,15 @@ struct TrackInstanceInfo {
     int64_t lastHeartbeatMs{0};
 };
 
+struct InstanceRecorderEntry {
+    std::string instanceId;
+    std::string trackName;
+    AudioTakeRecorder* recorder{nullptr};
+};
+
 /**
  * Thread-safe global session registry shared across all plugin instances in the DAW process.
- * Enables live telemetry and cross-track communication.
+ * Enables live telemetry, cross-track communication, and multi-track audio take recording.
  */
 class GlobalSessionHub {
 public:
@@ -48,14 +55,36 @@ public:
     juce::var getTracksAsVar();
     juce::String getTracksJson();
 
+    // Multi-track audio take recording coordination
+    void registerRecorder(const std::string& instanceId, const std::string& trackName, AudioTakeRecorder* recorder);
+    void updateRecorderTrackName(const std::string& instanceId, const std::string& trackName);
+    void unregisterRecorder(const std::string& instanceId);
+
+    bool startRecordingTake(const juce::String& trackNameQuery,
+                            const juce::String& projectName,
+                            double bpm,
+                            juce::String& outResolvedTrack,
+                            juce::String& outError);
+
+    juce::var stopRecordingTake();
+    juce::var getTakeStatus(const AudioTakeRecorder* fallback = nullptr);
+    bool isRecordingTake() const;
+
+    void setAutoRecTakeEnabled(bool enabled);
+    bool isAutoRecTakeEnabled() const;
+
 private:
     GlobalSessionHub() = default;
     ~GlobalSessionHub() = default;
     GlobalSessionHub(const GlobalSessionHub&) = delete;
     GlobalSessionHub& operator=(const GlobalSessionHub&) = delete;
 
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     std::unordered_map<std::string, TrackInstanceInfo> m_tracks;
+    std::unordered_map<std::string, InstanceRecorderEntry> m_recorders;
+    AudioTakeRecorder* m_activeRecorder{nullptr};
+    std::string m_activeRecorderInstanceId;
+    std::string m_activeRecordingTrackName;
 };
 
 } // namespace johnwalls::johnwalls

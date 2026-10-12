@@ -790,7 +790,7 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
 
     // ---- Audio Take Recorder & Studio Dispatch Endpoints ----
     if (method == "GET" && path.startsWith("/take/status")) {
-        juce::var st = m_processor.getTakeRecorder().getStatus();
+        juce::var st = GlobalSessionHub::getInstance().getTakeStatus(&m_processor.getTakeRecorder());
         juce::String json = juce::JSON::toString(st, false);
         juce::String response =
             "HTTP/1.1 200 OK\r\n"
@@ -822,8 +822,24 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         juce::String trackName = parsed.isObject() ? parsed.getProperty("trackName", defaultTrack).toString() : defaultTrack;
         juce::String projName = parsed.isObject() ? parsed.getProperty("projectName", "").toString() : "";
         double bpm = parsed.isObject() ? static_cast<double>(parsed.getProperty("bpm", m_processor.getCurrentBpm())) : static_cast<double>(m_processor.getCurrentBpm());
-        bool ok = m_processor.getTakeRecorder().startRecording(trackName, projName, bpm);
-        juce::String reply = ok ? "{\"ok\":true,\"isRecording\":true}" : "{\"ok\":false,\"error\":\"Failed to open audio writer\"}";
+
+        juce::String resolvedTrack;
+        juce::String errorMsg;
+        bool ok = GlobalSessionHub::getInstance().startRecordingTake(trackName, projName, bpm, resolvedTrack, errorMsg);
+        if (!ok) {
+            ok = m_processor.getTakeRecorder().startRecording(trackName, projName, bpm);
+            resolvedTrack = trackName;
+        }
+
+        juce::DynamicObject::Ptr replyObj = new juce::DynamicObject();
+        replyObj->setProperty("ok", ok);
+        replyObj->setProperty("isRecording", ok);
+        replyObj->setProperty("trackName", resolvedTrack);
+        if (!ok && errorMsg.isNotEmpty()) {
+            replyObj->setProperty("error", errorMsg);
+        }
+
+        juce::String reply = juce::JSON::toString(juce::var(replyObj.get()), false);
         juce::String response =
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: application/json\r\n" + corsHeaders +
@@ -834,7 +850,10 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
     }
 
     if (method == "POST" && path.startsWith("/take/record/stop")) {
-        juce::var take = m_processor.getTakeRecorder().stopRecording();
+        juce::var take = GlobalSessionHub::getInstance().stopRecordingTake();
+        if (take.isVoid() || !take.isObject()) {
+            take = m_processor.getTakeRecorder().stopRecording();
+        }
         juce::DynamicObject::Ptr root = new juce::DynamicObject();
         root->setProperty("ok", true);
         root->setProperty("take", take);
@@ -852,7 +871,7 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
         auto parsed = juce::JSON::parse(body);
         bool enabled = parsed.isObject() && static_cast<bool>(parsed.getProperty("enabled", true));
-        m_processor.getTakeRecorder().setAutoRecEnabled(enabled);
+        GlobalSessionHub::getInstance().setAutoRecTakeEnabled(enabled);
         juce::String reply = "{\"ok\":true,\"autoRecEnabled\":" + juce::String(enabled ? "true" : "false") + "}";
         juce::String response =
             "HTTP/1.1 200 OK\r\n"

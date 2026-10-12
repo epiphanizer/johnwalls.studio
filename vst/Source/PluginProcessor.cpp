@@ -124,6 +124,7 @@ JohnwallsStudioAudioProcessor::JohnwallsStudioAudioProcessor()
     initialInfo.trackType = "midi";
     initialInfo.lastHeartbeatMs = juce::Time::currentTimeMillis();
     GlobalSessionHub::getInstance().registerOrUpdate(initialInfo);
+    GlobalSessionHub::getInstance().registerRecorder(m_instanceId, m_trackName, &m_takeRecorder);
 
     // Launch local telemetry server for external/desktop sync
     m_telemetryServer.start();
@@ -134,6 +135,7 @@ JohnwallsStudioAudioProcessor::JohnwallsStudioAudioProcessor()
 
 JohnwallsStudioAudioProcessor::~JohnwallsStudioAudioProcessor() {
     m_sessionWorker.stopThread(1000);
+    GlobalSessionHub::getInstance().unregisterRecorder(m_instanceId);
     GlobalSessionHub::getInstance().unregister(m_instanceId);
     m_telemetryServer.stop();
 }
@@ -686,6 +688,7 @@ void JohnwallsStudioAudioProcessor::updateTrackProperties(const TrackProperties&
     if (properties.colourARGB.has_value()) {
         m_trackColorARGB.store(*properties.colourARGB, std::memory_order_relaxed);
     }
+    GlobalSessionHub::getInstance().updateRecorderTrackName(m_instanceId, getTrackName());
     publishSessionState();
 }
 
@@ -718,6 +721,7 @@ void JohnwallsStudioAudioProcessor::publishSessionState() {
 
     auto& hub = GlobalSessionHub::getInstance();
     hub.registerOrUpdate(info);
+    hub.updateRecorderTrackName(m_instanceId, info.trackName);
 
     // Decide (off the audio thread) which reactive rule currently applies to this instance.
     const auto tracks = hub.getAllTracks();

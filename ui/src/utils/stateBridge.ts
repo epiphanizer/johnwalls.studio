@@ -7,12 +7,6 @@ declare global {
   }
 }
 
-const DEFAULT_SERVER_URLS = Array.from(new Set([
-  getTelemetryBaseUrl(),
-  'http://127.0.0.1:3012',
-  'http://127.0.0.1:3013',
-  'http://127.0.0.1:3014'
-]));
 
 export const DEFAULT_REACTIVE_MIDI_RULES: ReactiveMidiRule[] = [
   {
@@ -61,10 +55,34 @@ export interface RecentAlsProject {
 }
 
 class StateBridge {
-  private activeBaseUrl: string = DEFAULT_SERVER_URLS[0];
+  private activeBaseUrl: string = '';
+
+  public getActiveBaseUrl(): string {
+    return this.activeBaseUrl || getTelemetryBaseUrl();
+  }
+
+  private getServerUrls(): string[] {
+    const primary = getTelemetryBaseUrl();
+    const ports = ['3012', '3013', '3014', '3015', '3016'];
+    const list: string[] = [];
+    if (primary && !list.includes(primary)) {
+      list.push(primary);
+    }
+    if (this.activeBaseUrl && !list.includes(this.activeBaseUrl)) {
+      list.push(this.activeBaseUrl);
+    }
+    for (const p of ports) {
+      const u = `http://127.0.0.1:${p}`;
+      if (!list.includes(u)) {
+        list.push(u);
+      }
+    }
+    return list;
+  }
 
   private async tryFetch(path: string, options?: RequestInit): Promise<Response> {
-    for (const baseUrl of DEFAULT_SERVER_URLS) {
+    const urls = this.getServerUrls();
+    for (const baseUrl of urls) {
       try {
         const res = await fetch(`${baseUrl}${path}`, {
           ...options,
