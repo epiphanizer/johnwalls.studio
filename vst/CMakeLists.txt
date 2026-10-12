@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Keep verification builds side-effect free. Enable this only when intentionally
 # installing the plugin into the user's global AU/VST folders.
-option(JWS_COPY_PLUGINS_AFTER_BUILD "Copy AU/VST artifacts into global plugin folders" OFF)
+option(JWS_COPY_PLUGINS_AFTER_BUILD "Copy AU/VST artifacts into global plugin folders" ON)
 
 # Add JUCE submodule
 add_subdirectory(JUCE)
@@ -72,9 +72,10 @@ if(JWS_BUILD_VST_TESTS)
         tests/reactive_midi_test.cpp
         Source/ReactiveMidiEngine.cpp
         Source/SuperColliderManager.cpp
-        Source/GlobalSessionHub.cpp)
+        Source/GlobalSessionHub.cpp
+        Source/AudioTakeRecorder.cpp)
     target_include_directories(reactive_midi_test PRIVATE Source)
-    target_link_libraries(reactive_midi_test PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_core)
+    target_link_libraries(reactive_midi_test PRIVATE juce::juce_audio_processors juce::juce_audio_basics juce::juce_audio_formats juce::juce_core)
 
     juce_add_console_app(sp404_state_test PRODUCT_NAME "sp404_state_test")
     target_sources(sp404_state_test PRIVATE

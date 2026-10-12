@@ -13,21 +13,31 @@ import {
   X
 } from 'lucide-react';
 import { stateBridge, AudioTakeMetadata, TakeRecorderStatus } from '../utils/stateBridge';
+import { AbletonTrackInfo } from '../types';
 
 interface TakeRecorderCockpitProps {
   isOpen: boolean;
   onClose: () => void;
   currentTrackName?: string;
   currentBpm?: number;
+  sessionTracks?: AbletonTrackInfo[];
 }
 
 export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
   isOpen,
   onClose,
   currentTrackName = 'Master',
-  currentBpm = 120
+  currentBpm = 120,
+  sessionTracks = []
 }) => {
+  const [selectedTrack, setSelectedTrack] = useState<string>(currentTrackName);
   const [status, setStatus] = useState<TakeRecorderStatus | null>(null);
+
+  useEffect(() => {
+    if (currentTrackName && !selectedTrack) {
+      setSelectedTrack(currentTrackName);
+    }
+  }, [currentTrackName]);
   const [recentTakes, setRecentTakes] = useState<AudioTakeMetadata[]>([]);
   const [selectedTake, setSelectedTake] = useState<AudioTakeMetadata | null>(null);
 
@@ -81,7 +91,7 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
         setPublishTitle(finished.trackName ? `${finished.trackName} Take` : 'Live Take');
       }
     } else {
-      await stateBridge.startRecording(currentTrackName, 'Ableton Session', currentBpm);
+      await stateBridge.startRecording(selectedTrack || currentTrackName, 'Ableton Session', currentBpm);
     }
     const st = await stateBridge.getTakeStatus();
     if (st) setStatus(st);
@@ -168,7 +178,7 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
                   ABLETON AUDIO CAPTURE & STUDIO DISPATCH
                 </h2>
                 <span className="text-[10px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 px-2 py-0.5 rounded-full font-semibold">
-                  PORT 3012 ACTIVE
+                  {stateBridge.getActiveBaseUrl().replace(/^https?:\/\//, '') || 'PORT 3012'} ACTIVE
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -199,6 +209,27 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
                 </span>
               </div>
 
+              {/* Source Track Selector */}
+              <div className="flex items-center justify-between p-3 bg-[#0d1017] border border-slate-800 rounded-lg">
+                <span className="text-xs font-mono text-slate-400 font-medium">CAPTURE SOURCE:</span>
+                <select
+                  value={selectedTrack}
+                  onChange={(e) => setSelectedTrack(e.target.value)}
+                  disabled={isRecording}
+                  className="bg-[#171b28] border border-slate-700/80 rounded px-2.5 py-1 text-xs font-mono text-slate-100 font-semibold focus:outline-none focus:border-amber-500 cursor-pointer disabled:opacity-60 max-w-[240px] truncate"
+                >
+                  <option value="Master">Master (Full Session Sum)</option>
+                  {sessionTracks &&
+                    sessionTracks
+                      .filter((t) => t.trackName && t.trackName.toLowerCase() !== 'master')
+                      .map((t) => (
+                        <option key={t.instanceId || t.trackName} value={t.trackName}>
+                          {t.trackName} {t.trackType ? `[${t.trackType}]` : ''}
+                        </option>
+                      ))}
+                </select>
+              </div>
+
               {/* Huge Record Button & Duration Meter */}
               <div className="flex items-center justify-between p-4 bg-[#0d1017] border border-slate-800/80 rounded-xl">
                 <div className="flex items-center gap-4">
@@ -225,7 +256,7 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
 
                 <div className="flex flex-col items-end text-xs font-mono text-slate-400 gap-1">
                   <div>
-                    TRACK: <strong className="text-slate-200">{currentTrackName}</strong>
+                    TRACK: <strong className="text-slate-200">{status?.currentTrackName || selectedTrack || currentTrackName}</strong>
                   </div>
                   <div>
                     BPM: <strong className="text-cyan-400">{currentBpm}</strong>

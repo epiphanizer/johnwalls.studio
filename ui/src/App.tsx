@@ -1859,6 +1859,7 @@ export const App: React.FC = () => {
         onClose={() => setIsCaptureDispatchOpen(false)}
         currentTrackName={telemetry.currentTrackName || 'Master'}
         currentBpm={telemetry.bpm}
+        sessionTracks={telemetry.sessionTracks || []}
       />
     </div>
   );
