@@ -348,7 +348,7 @@ export class SP404AudioEngine {
     try {
       this.ctx = existingContext || getSharedAudioContext();
       if (this.ctx.state === 'suspended') {
-        await this.ctx.resume();
+        this.ctx.resume().catch(() => {});
       }
 
       const now = this.ctx.currentTime;
@@ -358,13 +358,19 @@ export class SP404AudioEngine {
       this.masterGain.gain.setValueAtTime(0.85, now);
 
       // Only connect to browser physical output when running standalone, not in VST
-      const isInsideJuce = Boolean(
-        (window as any)?.__JUCE__ ||
-        (window as any)?.__onJuceTelemetry ||
-        window.__JUCE_INVOKE_NATIVE__
-      );
+      const isInsideJuce = hasJuceNativeHost();
       if (!isInsideJuce) {
         this.masterGain.connect(this.ctx.destination);
+
+        // Fetch native sampler state from local VST server if running
+        fetch(getTelemetryUrl('/sp404/state'))
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data && data.source === 'native-sp404') {
+              this.applyNativeState(data);
+            }
+          })
+          .catch(() => {});
       }
 
       // MFX chain nodes
@@ -427,10 +433,10 @@ export class SP404AudioEngine {
     const bankA = this.banks['A'];
 
     const types = [
-      'kick', 'kick', 'clap', 'snare',
-      'hat_closed', 'hat_open', 'perc', 'perc',
-      'vox', 'vox', 'rhodes', 'rhodes',
-      'bass', 'bass', 'vinyl', 'reverse'
+      'kick_01', 'kick_808', 'clap', 'snare',
+      'hat_closed', 'hat_open', 'tamb', 'rim',
+      'vox_a', 'vox_b', 'rhodes_jazz', 'rhodes_lofi',
+      'bass_808', 'bass_upright', 'vinyl', 'reverse'
     ];
 
     for (let i = 0; i < SP404_LEGACY_PROFILE.padsPerBank; i++) {
@@ -492,8 +498,17 @@ export class SP404AudioEngine {
       return;
     }
 
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+
     const pad = this.getPad(targetBank, targetPadId);
-    if (!pad || !pad.audioBuffer) return;
+    if (!pad) return;
+
+    if (!pad.audioBuffer && targetBank === 'A' && !this.hasReceivedNativeState) {
+      this.populateDefaultBankA();
+    }
+    if (!pad.audioBuffer) return;
 
     // Visual feedback
     this.flashPad(bank, padId);

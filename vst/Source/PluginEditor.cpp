@@ -5,45 +5,7 @@
 namespace johnwalls::johnwalls {
 
 juce::String JohnwallsStudioAudioProcessorEditor::buildSP404NativeStateJson() const {
-    const auto& engine = m_processorRef.getSP404Engine();
-    auto state = new juce::DynamicObject();
-    state->setProperty("source", "native-sp404");
-    state->setProperty("version", 1);
-    state->setProperty("volume", engine.getParam("volume"));
-    state->setProperty("activeMfx", static_cast<int>(engine.getParam("mfx")));
-    state->setProperty("ctrl1", engine.getParam("ctrl1"));
-    state->setProperty("ctrl2", engine.getParam("ctrl2"));
-    state->setProperty("ctrl3", engine.getParam("ctrl3"));
-    state->setProperty("placement", engine.getPlacement() == SP404Placement::AfterPedals ? "after" : "before");
-    state->setProperty("bypassed", engine.isBypassed());
-    state->setProperty("chromatic", engine.isChromaticMode());
-    state->setProperty("chromaticRootBank", engine.getChromaticRootBank());
-    state->setProperty("chromaticRootPad", engine.getChromaticRootPad());
-
-    juce::Array<juce::var> pads;
-    for (int bank = 0; bank < static_cast<int>(SP404Engine::kNumBanks); ++bank) {
-        for (int padId = 1; padId <= static_cast<int>(SP404Engine::kPadsPerBank); ++padId) {
-            const auto* pad = engine.getPad(bank, padId);
-            if (pad == nullptr) continue;
-            auto item = new juce::DynamicObject();
-            item->setProperty("bank", bank);
-            item->setProperty("padId", padId);
-            item->setProperty("hasSample", !pad->sampleL.empty());
-            item->setProperty("label", juce::String(pad->label));
-            item->setProperty("category", juce::String(pad->category));
-            item->setProperty("duration", pad->durationSeconds);
-            item->setProperty("sampleRate", pad->sampleRate);
-            item->setProperty("pitch", pad->pitchSemitones);
-            item->setProperty("volume", pad->volume);
-            item->setProperty("pan", pad->pan);
-            item->setProperty("mode", pad->isLoop ? "loop" : "oneshot");
-            item->setProperty("reverse", pad->isReverse);
-            item->setProperty("muteGroup", pad->muteGroup);
-            pads.add(juce::var(item));
-        }
-    }
-    state->setProperty("pads", juce::var(pads));
-    return juce::JSON::toString(juce::var(state));
+    return m_processorRef.buildSP404NativeStateJson();
 }
 
 JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(JohnwallsStudioAudioProcessor& p)

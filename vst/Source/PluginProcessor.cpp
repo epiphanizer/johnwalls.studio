@@ -92,6 +92,11 @@ JohnwallsStudioAudioProcessor::JohnwallsStudioAudioProcessor()
                      juce::ParameterID{"delay_time", 1}, "Delay Time", 20.0f, 1200.0f, 360.0f));
     addParameter(m_paramDelayFeedback = new juce::AudioParameterFloat(
                      juce::ParameterID{"delay_fb", 1}, "Delay Repeat", 0.0f, 0.95f, 0.45f));
+    addParameter(m_paramDelaySync = new juce::AudioParameterBool(
+                     juce::ParameterID{"delay_sync", 1}, "Delay Tempo Sync", true));
+    addParameter(m_paramDelayDivision = new juce::AudioParameterChoice(
+                     juce::ParameterID{"delay_division", 1}, "Delay Division",
+                     juce::StringArray{"1/1", "1/2D", "1/2", "1/2T", "1/4D", "1/4", "1/4T", "1/8D", "1/8", "1/8T", "1/16D", "1/16", "1/16T", "1/32"}, 7));
 
     addParameter(m_paramFilterBypass = new juce::AudioParameterBool(
                      juce::ParameterID{"filter_bypass", 1}, "Filter Bypass", false));
@@ -296,22 +301,25 @@ void JohnwallsStudioAudioProcessor::processBlock(juce::AudioBuffer<float>& buffe
         }
 
         if (auto* delay = m_rack.getCachedDelay()) {
-            resetIfNodeChanged(2, delay, 32, 35);
+            resetIfNodeChanged(2, delay, 32, 38);
             pushBypass(delay, 32, m_paramDelayBypass->get());
             push(delay, 33, "time", m_paramDelayTime->get());
             push(delay, 34, "feedback", m_paramDelayFeedback->get());
+            push(delay, 35, "sync", m_paramDelaySync->get() ? 1.0f : 0.0f);
+            push(delay, 36, "division", static_cast<float>(m_paramDelayDivision->getIndex()));
+            push(delay, 37, "bpm", static_cast<float>(m_currentBpm.load(std::memory_order_relaxed)));
         }
 
         if (auto* filter = m_rack.getCachedFilter()) {
-            resetIfNodeChanged(3, filter, 35, 37);
-            pushBypass(filter, 35, m_paramFilterBypass->get());
-            push(filter, 36, "cutoff", m_paramFilterCutoff->get());
+            resetIfNodeChanged(3, filter, 38, 41);
+            pushBypass(filter, 38, m_paramFilterBypass->get());
+            push(filter, 39, "cutoff", m_paramFilterCutoff->get());
         }
 
         if (auto* ducker = m_rack.getCachedDucker()) {
-            resetIfNodeChanged(4, ducker, 37, 40);
-            pushBypass(ducker, 37, m_paramDuckerBypass->get());
-            push(ducker, 38, "depth", m_paramDuckerDepth->get());
+            resetIfNodeChanged(4, ducker, 41, 45);
+            pushBypass(ducker, 41, m_paramDuckerBypass->get());
+            push(ducker, 42, "depth", m_paramDuckerDepth->get());
         }
     }
 
@@ -409,6 +417,8 @@ void JohnwallsStudioAudioProcessor::setParameterFromUI(const juce::String& param
                     *pb = (value > 0.5f);
                 } else if (auto* pi = dynamic_cast<juce::AudioParameterInt*>(p)) {
                     *pi = static_cast<int>(std::round(value));
+                } else if (auto* pc = dynamic_cast<juce::AudioParameterChoice*>(p)) {
+                    *pc = static_cast<int>(std::round(value));
                 }
                 break;
             }
@@ -458,6 +468,8 @@ void JohnwallsStudioAudioProcessor::setPedalParamFromUI(const juce::String& id, 
     } else if (id == "dub_echo") {
         if (paramName == "time") setParameterFromUI("delay_time", value);
         else if (paramName == "feedback") setParameterFromUI("delay_fb", value);
+        else if (paramName == "sync") setParameterFromUI("delay_sync", value);
+        else if (paramName == "division") setParameterFromUI("delay_division", value);
     } else if (id == "resonant_filter") {
         if (paramName == "cutoff") setParameterFromUI("filter_cutoff", value);
     } else if (id == "sidechain_ducker") {
@@ -629,6 +641,8 @@ juce::String JohnwallsStudioAudioProcessor::getTelemetryJsonString() {
                 paramsObj->setProperty(p->paramID, pb->get());
             } else if (auto* pi = dynamic_cast<juce::AudioParameterInt*>(p)) {
                 paramsObj->setProperty(p->paramID, pi->get());
+            } else if (auto* pc = dynamic_cast<juce::AudioParameterChoice*>(p)) {
+                paramsObj->setProperty(p->paramID, pc->getIndex());
             }
         }
     }
@@ -934,6 +948,48 @@ void JohnwallsStudioAudioProcessor::setSP404Routing(const juce::String& order, b
 
 void JohnwallsStudioAudioProcessor::setSP404Param(const juce::String& paramName, float value) {
     m_sp404Engine.setParam(paramName.toStdString(), value);
+}
+
+juce::String JohnwallsStudioAudioProcessor::buildSP404NativeStateJson() const {
+    const auto& engine = m_sp404Engine;
+    auto state = new juce::DynamicObject();
+    state->setProperty("source", "native-sp404");
+    state->setProperty("version", 1);
+    state->setProperty("volume", engine.getParam("volume"));
+    state->setProperty("activeMfx", static_cast<int>(engine.getParam("mfx")));
+    state->setProperty("ctrl1", engine.getParam("ctrl1"));
+    state->setProperty("ctrl2", engine.getParam("ctrl2"));
+    state->setProperty("ctrl3", engine.getParam("ctrl3"));
+    state->setProperty("placement", engine.getPlacement() == SP404Placement::AfterPedals ? "after" : "before");
+    state->setProperty("bypassed", engine.isBypassed());
+    state->setProperty("chromatic", engine.isChromaticMode());
+    state->setProperty("chromaticRootBank", engine.getChromaticRootBank());
+    state->setProperty("chromaticRootPad", engine.getChromaticRootPad());
+
+    juce::Array<juce::var> pads;
+    for (int bank = 0; bank < static_cast<int>(SP404Engine::kNumBanks); ++bank) {
+        for (int padId = 1; padId <= static_cast<int>(SP404Engine::kPadsPerBank); ++padId) {
+            const auto* pad = engine.getPad(bank, padId);
+            if (pad == nullptr) continue;
+            auto item = new juce::DynamicObject();
+            item->setProperty("bank", bank);
+            item->setProperty("padId", padId);
+            item->setProperty("hasSample", !pad->sampleL.empty());
+            item->setProperty("label", juce::String(pad->label));
+            item->setProperty("category", juce::String(pad->category));
+            item->setProperty("duration", pad->durationSeconds);
+            item->setProperty("sampleRate", pad->sampleRate);
+            item->setProperty("pitch", pad->pitchSemitones);
+            item->setProperty("volume", pad->volume);
+            item->setProperty("pan", pad->pan);
+            item->setProperty("mode", pad->isLoop ? "loop" : "oneshot");
+            item->setProperty("reverse", pad->isReverse);
+            item->setProperty("muteGroup", pad->muteGroup);
+            pads.add(juce::var(item));
+        }
+    }
+    state->setProperty("pads", juce::var(pads));
+    return juce::JSON::toString(juce::var(state));
 }
 
 } // namespace johnwalls::johnwalls
