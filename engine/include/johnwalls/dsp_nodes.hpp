@@ -161,6 +161,29 @@ struct RBJBiquad {
     }
 };
 
+struct DelayDivision {
+    const char* label;
+    float beats;
+};
+
+inline constexpr DelayDivision kDelayDivisions[] = {
+    {"1/1", 4.0f},
+    {"1/2D", 3.0f},
+    {"1/2", 2.0f},
+    {"1/2T", 4.0f / 3.0f},
+    {"1/4D", 1.5f},
+    {"1/4", 1.0f},
+    {"1/4T", 2.0f / 3.0f},
+    {"1/8D", 0.75f},
+    {"1/8", 0.5f},
+    {"1/8T", 1.0f / 3.0f},
+    {"1/16D", 0.375f},
+    {"1/16", 0.25f},
+    {"1/16T", 1.0f / 6.0f},
+    {"1/32", 0.125f}
+};
+constexpr int kNumDelayDivisions = sizeof(kDelayDivisions) / sizeof(kDelayDivisions[0]);
+
 /**
  * Analog-modeled tape delay with wow/flutter modulation and warm soft clipping.
  */
@@ -184,6 +207,10 @@ private:
     float m_mix{0.50f};
     float m_flutter{0.15f};
     float m_saturation{0.25f};
+    bool m_tempoSync{true};
+    int m_divisionIndex{7}; // default: 1/8D
+    float m_bpm{120.0f};
+    float m_smoothedDelaySamples{0.0f};
 
     std::vector<float> m_bufferL;
     std::vector<float> m_bufferR;
@@ -346,6 +373,9 @@ private:
     RBJBiquad m_filter2200L, m_filter2200R;
     RBJBiquad m_filter6600L, m_filter6600R;
 
+    // DC blocking high-pass filters
+    RBJBiquad m_dcBlockerL, m_dcBlockerR;
+
     // Cabinet simulation biquads
     RBJBiquad m_cabLowL, m_cabLowR;
     RBJBiquad m_cabPeakL, m_cabPeakR;
@@ -399,6 +429,7 @@ private:
     RBJBiquad m_trebleFilterL, m_trebleFilterR;
     RBJBiquad m_brilliantFilterL, m_brilliantFilterR;
     RBJBiquad m_cutFilterL, m_cutFilterR;
+    RBJBiquad m_dcBlockerL, m_dcBlockerR;
 
     // Cabinet simulation biquads
     RBJBiquad m_cabLowL, m_cabLowR;

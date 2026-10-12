@@ -150,6 +150,18 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         return;
     }
 
+    if (method == "GET" && path.startsWith("/sp404/state")) {
+        juce::String json = m_processor.buildSP404NativeStateJson();
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" +
+            json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
     if (method == "GET" && path.startsWith("/session/tracks")) {
         juce::String json = m_processor.getSessionTracksJson();
         juce::String response =

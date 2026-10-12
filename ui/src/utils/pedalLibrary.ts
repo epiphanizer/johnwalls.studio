@@ -29,6 +29,8 @@ export const FACTORY_PEDALS: LibraryPedalTemplate[] = [
     isFactory: true,
     parameters: {
       time: 360,
+      sync: 1,
+      division: 7,
       feedback: 0.45,
       mix: 0.50,
       flutter: 0.20
@@ -46,6 +48,8 @@ export const FACTORY_PEDALS: LibraryPedalTemplate[] = [
     isFactory: true,
     parameters: {
       time: 240,
+      sync: 1,
+      division: 8,
       feedback: 0.55,
       mix: 0.42,
       flutter: 0.35
@@ -63,6 +67,8 @@ export const FACTORY_PEDALS: LibraryPedalTemplate[] = [
     isFactory: true,
     parameters: {
       time: 90,
+      sync: 0,
+      division: 11,
       feedback: 0.15,
       mix: 0.60,
       flutter: 0.10
@@ -80,6 +86,8 @@ export const FACTORY_PEDALS: LibraryPedalTemplate[] = [
     isFactory: true,
     parameters: {
       time: 850,
+      sync: 1,
+      division: 4,
       feedback: 0.88,
       mix: 0.65,
       flutter: 0.45
@@ -540,6 +548,8 @@ export function instantiatePedalFromLibrary(
 
   if (template.type === 'delay') {
     params.time = { name: 'time', label: 'Time', value: template.parameters.time ?? 360, min: 20, max: 1200, step: 10, unit: 'ms' };
+    params.sync = { name: 'sync', label: 'Sync', value: template.parameters.sync ?? 1, min: 0, max: 1, step: 1, unit: '' };
+    params.division = { name: 'division', label: 'Division', value: template.parameters.division ?? 7, min: 0, max: 13, step: 1, unit: '' };
     params.feedback = { name: 'feedback', label: 'Repeat', value: template.parameters.feedback ?? 0.45, min: 0.0, max: 0.95, step: 0.01, unit: '' };
     params.mix = { name: 'mix', label: 'Wet Mix', value: template.parameters.mix ?? 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' };
     params.flutter = { name: 'flutter', label: 'Flutter', value: template.parameters.flutter ?? 0.20, min: 0.0, max: 1.0, step: 0.01, unit: '' };

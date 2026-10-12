@@ -29,6 +29,7 @@ void TapeDelayNode::reset() {
     std::fill(m_bufferR.begin(), m_bufferR.end(), 0.0f);
     m_writeIndex = 0;
     m_lfoPhase = 0.0f;
+    m_smoothedDelaySamples = 0.0f;
 }
 
 void TapeDelayNode::process(AudioBufferView& buffer) {
@@ -38,16 +39,30 @@ void TapeDelayNode::process(AudioBufferView& buffer) {
     float* channelL = buffer.getChannelData(0);
     float* channelR = (buffer.getNumChannels() > 1) ? buffer.getChannelData(1) : channelL;
 
-    float baseDelaySamples = (m_delayTimeMs * 0.001f) * static_cast<float>(m_sampleRate);
-    baseDelaySamples = std::clamp(baseDelaySamples, 10.0f, static_cast<float>(m_maxDelaySamples - 100));
+    float targetDelayMs = m_delayTimeMs;
+    if (m_tempoSync) {
+        int divIdx = std::clamp(m_divisionIndex, 0, kNumDelayDivisions - 1);
+        float beats = kDelayDivisions[divIdx].beats;
+        targetDelayMs = (beats * 60000.0f) / std::max(20.0f, m_bpm);
+    }
+    targetDelayMs = std::clamp(targetDelayMs, 5.0f, 2500.0f);
+    float targetDelaySamples = (targetDelayMs * 0.001f) * static_cast<float>(m_sampleRate);
+    targetDelaySamples = std::clamp(targetDelaySamples, 10.0f, static_cast<float>(m_maxDelaySamples - 100));
+
+    if (m_smoothedDelaySamples <= 0.0f) {
+        m_smoothedDelaySamples = targetDelaySamples;
+    }
 
     for (size_t i = 0; i < numSamples; ++i) {
+        // Continuous smoothing prevents clicks/pops when tempo or division changes
+        m_smoothedDelaySamples += 0.005f * (targetDelaySamples - m_smoothedDelaySamples);
+
         // Wow/flutter subtle sinusoidal modulation
         m_lfoPhase += m_lfoInc;
         if (m_lfoPhase >= 2.0f * 3.1415926535f) m_lfoPhase -= 2.0f * 3.1415926535f;
         float flutterOffset = fastSin(m_lfoPhase) * (m_flutter * 24.0f);
 
-        float currentDelay = baseDelaySamples + flutterOffset;
+        float currentDelay = m_smoothedDelaySamples + flutterOffset;
         float readPos = static_cast<float>(m_writeIndex) - currentDelay;
         if (readPos < 0.0f) readPos += static_cast<float>(m_maxDelaySamples);
 
@@ -98,20 +113,41 @@ bool TapeDelayNode::setParameter(const std::string& name, float value) {
         m_saturation = std::clamp(value, 0.0f, 1.0f);
         return true;
     }
+    if (name == "sync") {
+        m_tempoSync = (value > 0.5f);
+        return true;
+    }
+    if (name == "division") {
+        m_divisionIndex = std::clamp(static_cast<int>(std::round(value)), 0, kNumDelayDivisions - 1);
+        return true;
+    }
+    if (name == "bpm") {
+        m_bpm = std::clamp(value, 20.0f, 300.0f);
+        return true;
+    }
     return false;
 }
 
 float TapeDelayNode::getParameter(const std::string& name) const {
-    if (name == "time") return m_delayTimeMs;
+    if (name == "time") {
+        if (m_tempoSync) {
+            int divIdx = std::clamp(m_divisionIndex, 0, kNumDelayDivisions - 1);
+            return (kDelayDivisions[divIdx].beats * 60000.0f) / std::max(20.0f, m_bpm);
+        }
+        return m_delayTimeMs;
+    }
     if (name == "feedback" || name == "fb") return m_feedback;
     if (name == "mix") return m_mix;
     if (name == "flutter") return m_flutter;
     if (name == "saturation") return m_saturation;
+    if (name == "sync") return m_tempoSync ? 1.0f : 0.0f;
+    if (name == "division") return static_cast<float>(m_divisionIndex);
+    if (name == "bpm") return m_bpm;
     return 0.0f;
 }
 
 std::vector<std::string> TapeDelayNode::getParameterNames() const {
-    return {"time", "feedback", "mix", "flutter", "saturation"};
+    return {"time", "feedback", "mix", "flutter", "saturation", "sync", "division", "bpm"};
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +425,7 @@ void MesaMarkNode::reset() {
     m_filter2200L.reset(); m_filter2200R.reset();
     m_filter6600L.reset(); m_filter6600R.reset();
 
+    m_dcBlockerL.reset(); m_dcBlockerR.reset();
     m_cabLowL.reset(); m_cabLowR.reset();
     m_cabPeakL.reset(); m_cabPeakR.reset();
     m_cabHighL.reset(); m_cabHighR.reset();
@@ -424,6 +461,10 @@ void MesaMarkNode::updateFilters() {
     float presenceDb = (m_presence - 5.0f) * 1.6f;
     m_presenceL.setPeaking(4800.0f, presenceDb, 1.0f, sr);
     m_presenceR.setPeaking(4800.0f, presenceDb, 1.0f, sr);
+
+    // DC Blocker: strips asymmetric tube bias before graphic EQ
+    m_dcBlockerL.setHighPass(20.0f, 0.707f, sr);
+    m_dcBlockerR.setHighPass(20.0f, 0.707f, sr);
 
     // 2. Post-Gain 5-Band Graphic Equalizer (Real LC-inductor peaking curves)
     m_filter80L.setPeaking(80.0f, m_eq80, 1.4f, sr);
@@ -513,6 +554,10 @@ void MesaMarkNode::process(AudioBufferView& buffer) {
             satL = fastTanh(v2L * 2.8f - 0.12f * v2L * v2L);
             satR = fastTanh(v2R * 2.8f - 0.12f * v2R * v2R);
         }
+
+        // DC Blocker: strips asymmetric tube bias before presence and graphic EQ
+        satL = m_dcBlockerL.process(satL);
+        satR = m_dcBlockerR.process(satR);
 
         // 3. Simul-Class Power Section & Negative Feedback Presence
         satL = m_presenceL.process(satL);
@@ -716,6 +761,7 @@ void VoxAC30Node::reset() {
     m_trebleFilterL.reset(); m_trebleFilterR.reset();
     m_brilliantFilterL.reset(); m_brilliantFilterR.reset();
     m_cutFilterL.reset(); m_cutFilterR.reset();
+    m_dcBlockerL.reset(); m_dcBlockerR.reset();
 
     m_cabLowL.reset(); m_cabLowR.reset();
     m_cabPeakL.reset(); m_cabPeakR.reset();
@@ -747,6 +793,10 @@ void VoxAC30Node::updateFilters() {
     cutFreq = std::clamp(cutFreq, 2200.0f, 16000.0f);
     m_cutFilterL.setLowPass(cutFreq, 0.707f, sr);
     m_cutFilterR.setLowPass(cutFreq, 0.707f, sr);
+
+    // DC Blocker: eliminates DC bias before tone cut and cabinet filters
+    m_dcBlockerL.setHighPass(20.0f, 0.707f, sr);
+    m_dcBlockerR.setHighPass(20.0f, 0.707f, sr);
 
     // 2. Celestion Alnico Blue 2x12 Open-Back Cabinet
     m_cabLowL.setHighPass(85.0f, 0.707f, sr);     // Open-back 2x12 bass roll-off
@@ -782,11 +832,13 @@ void VoxAC30Node::process(AudioBufferView& buffer) {
 
         // 1. Dynamic Cathode Bias Power Sag (Rectifier tube voltage drop on loud transients)
         float peak = std::max(std::abs(inL), std::abs(inR));
+        if (std::isnan(peak) || !std::isfinite(peak)) peak = 0.0f;
         if (peak > m_sagEnvelope) {
             m_sagEnvelope += 0.015f * (peak - m_sagEnvelope);
         } else {
             m_sagEnvelope += 0.0018f * (peak - m_sagEnvelope);
         }
+        if (!std::isfinite(m_sagEnvelope) || m_sagEnvelope < 0.0f) m_sagEnvelope = 0.0f;
         float sagFactor = 1.0f / (1.0f + m_sagEnvelope * 1.8f);
 
         // 2. Channel & Tone Stack Processing
@@ -812,13 +864,17 @@ void VoxAC30Node::process(AudioBufferView& buffer) {
         float satL = fastTanh(driveL);
         float satR = fastTanh(driveR);
 
-        // 4. Harmonic Chime Exciter: injects shimmering harmonics
+        // 4. Harmonic Chime Exciter: injects shimmering harmonics derived from bounded tube compression
         if (chimeAmount > 0.01f) {
-            float h2L = driveL * driveL * 0.18f * chimeAmount;
-            float h2R = driveR * driveR * 0.18f * chimeAmount;
-            satL += (driveL > 0 ? h2L : -h2L);
-            satR += (driveR > 0 ? h2R : -h2R);
+            float h2L = (1.0f - satL * satL) * satL * 0.35f * chimeAmount;
+            float h2R = (1.0f - satR * satR) * satR * 0.35f * chimeAmount;
+            satL = fastTanh(satL + h2L);
+            satR = fastTanh(satR + h2R);
         }
+
+        // DC Blocker: eliminates DC bias before tone cut and cabinet filters
+        satL = m_dcBlockerL.process(satL);
+        satR = m_dcBlockerR.process(satR);
 
         // 5. Phase-Inverter Reverse Tone Cut (Rolls off highs post-saturation)
         float cutL = m_cutFilterL.process(satL);

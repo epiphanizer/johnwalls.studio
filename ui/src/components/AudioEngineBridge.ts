@@ -1,6 +1,6 @@
 import { MusicalState, PedalInstance, ReactiveRule, SensoryChannelInfo, StateTelemetry } from '../types';
 import { getSharedAudioContext } from '../utils/sharedAudioContext';
-import { getTelemetryUrl } from '../utils/nativeTransport';
+import { getTelemetryUrl, hasJuceNativeHost } from '../utils/nativeTransport';
 
 interface LiveSensorDetector {
   id: string;
@@ -441,7 +441,7 @@ export class AudioEngineBridge {
 
       this.masterGain.connect(this.masterAnalyser);
       // Only route Web Audio to physical destination if running in standalone browser
-      const isInsideJuce = Boolean((window as any)?.__JUCE__ || (window as any)?.__onJuceTelemetry);
+      const isInsideJuce = hasJuceNativeHost();
       if (!isInsideJuce) {
         this.masterAnalyser.connect(this.ctx.destination);
       }
@@ -893,6 +893,8 @@ export class AudioEngineBridge {
 
       'dub_echo:time': 'delay_time',
       'dub_echo:feedback': 'delay_fb',
+      'dub_echo:sync': 'delay_sync',
+      'dub_echo:division': 'delay_division',
 
       'resonant_filter:cutoff': 'filter_cutoff',
 
@@ -937,9 +939,19 @@ export class AudioEngineBridge {
         if (p.bypassed) {
           this.delayFeedback.gain.setValueAtTime(0, now);
         } else {
-          const time = (p.parameters.time?.value ?? 350) * 0.001;
+          let time = (p.parameters.time?.value ?? 360) * 0.001;
+          const isSync = (p.parameters.sync?.value ?? 0) >= 0.5;
+          if (isSync) {
+            const divisionIndex = Math.round(p.parameters.division?.value ?? 5);
+            // 14 standard divisions matching kDelayDivisions in C++ DSP engine:
+            // 0: 1/1, 1: 1/2D, 2: 1/2, 3: 1/2T, 4: 1/4D, 5: 1/4, 6: 1/4T, 7: 1/8D, 8: 1/8, 9: 1/8T, 10: 1/16D, 11: 1/16, 12: 1/16T, 13: 1/32
+            const beatsTable = [4.0, 3.0, 2.0, 4.0 / 3.0, 1.5, 1.0, 2.0 / 3.0, 0.75, 0.5, 1.0 / 3.0, 0.375, 0.25, 0.5 / 3.0, 0.125];
+            const beats = beatsTable[Math.max(0, Math.min(beatsTable.length - 1, divisionIndex))] ?? 1.0;
+            const currentBpm = Math.max(20, Math.min(300, this.bpm || 120));
+            time = (beats * 60.0) / currentBpm;
+          }
           const fb = p.parameters.feedback?.value ?? 0.45;
-          this.delayNode.delayTime.setTargetAtTime(time, now, 0.05);
+          this.delayNode.delayTime.setTargetAtTime(Math.min(4.0, Math.max(0.001, time)), now, 0.05);
           this.delayFeedback.gain.setTargetAtTime(fb, now, 0.05);
         }
       }

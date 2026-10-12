@@ -52,6 +52,8 @@ const INITIAL_PEDALS: PedalInstance[] = [
     bypassed: false,
     parameters: {
       time: { name: 'time', label: 'Time', value: 360, min: 20, max: 1200, step: 10, unit: 'ms' },
+      sync: { name: 'sync', label: 'Sync', value: 1, min: 0, max: 1, step: 1, unit: '' },
+      division: { name: 'division', label: 'Division', value: 7, min: 0, max: 13, step: 1, unit: '' },
       feedback: { name: 'feedback', label: 'Repeat', value: 0.45, min: 0.0, max: 0.95, step: 0.01, unit: '' },
       mix: { name: 'mix', label: 'Wet Mix', value: 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' },
       flutter: { name: 'flutter', label: 'Flutter', value: 0.20, min: 0.0, max: 1.0, step: 0.01, unit: '' }

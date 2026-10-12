@@ -186,6 +186,8 @@ private:
     juce::AudioParameterBool* m_paramDelayBypass{nullptr};
     juce::AudioParameterFloat* m_paramDelayTime{nullptr};
     juce::AudioParameterFloat* m_paramDelayFeedback{nullptr};
+    juce::AudioParameterBool* m_paramDelaySync{nullptr};
+    juce::AudioParameterChoice* m_paramDelayDivision{nullptr};
 
     juce::AudioParameterBool* m_paramFilterBypass{nullptr};
     juce::AudioParameterFloat* m_paramFilterCutoff{nullptr};
@@ -198,6 +200,7 @@ private:
 
 public:
     const juce::String& getLastRackStateJson() const noexcept { return m_lastRackStateJson; }
+    juce::String buildSP404NativeStateJson() const;
 
 private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JohnwallsStudioAudioProcessor)
