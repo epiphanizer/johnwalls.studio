@@ -265,6 +265,74 @@ void testDSPNodes() {
     }
     assert(openEnergy > closedEnergy * 2.0f); // Tone Cut effectively rolled off 10kHz!
 
+    // 7. TapeDelayNode Tempo Sync Across All 14 Subdivisions
+    TapeDelayNode syncDelay("sync_delay");
+    syncDelay.prepare(44100.0, numSamples);
+    syncDelay.setParameter("sync", 1.0f);
+    syncDelay.setParameter("bpm", 120.0f);
+
+    for (int d = 0; d < kNumDelayDivisions; ++d) {
+        syncDelay.setParameter("division", static_cast<float>(d));
+        float expectedMs = (kDelayDivisions[d].beats * 60000.0f) / 120.0f;
+        float actualMs = syncDelay.getParameter("time");
+        assert(std::abs(actualMs - expectedMs) < 0.1f);
+    }
+
+    // Process with 1/8D (dotted eighth) delay at 120 BPM (375ms)
+    syncDelay.setParameter("division", 7.0f); // 1/8D
+    syncDelay.setParameter("feedback", 0.50f);
+    syncDelay.setParameter("mix", 0.50f);
+    syncDelay.process(view);
+    for (size_t i = 0; i < numSamples; ++i) {
+        assert(!std::isnan(view.getSample(0, i)));
+        assert(!std::isinf(view.getSample(0, i)));
+    }
+
+    // 8. Vox AC-30 Extreme Chime Stability (Ensure bounded tube saturation without runaway)
+    VoxAC30Node hotVox("hot_vox");
+    hotVox.prepare(44100.0, numSamples);
+    hotVox.setParameter("channel", 1.0f);
+    hotVox.setParameter("gain", 10.0f);
+    hotVox.setParameter("chime", 10.0f);
+    hotVox.setParameter("master", 10.0f);
+    OwnedAudioBuffer hotBuffer(2, numSamples);
+    for (size_t i = 0; i < numSamples; ++i) {
+        hotBuffer.getChannelData(0)[i] = 1.5f; // Hot input
+        hotBuffer.getChannelData(1)[i] = 1.5f;
+    }
+    auto hotView = hotBuffer.getView();
+    hotVox.process(hotView);
+    for (size_t i = 0; i < numSamples; ++i) {
+        float sL = hotView.getSample(0, i);
+        float sR = hotView.getSample(1, i);
+        assert(!std::isnan(sL) && !std::isinf(sL));
+        assert(!std::isnan(sR) && !std::isinf(sR));
+        assert(std::abs(sL) < 5.0f); // Bounded output
+        assert(std::abs(sR) < 5.0f);
+    }
+
+    // 9. Mesa Mark III Lead DC Offset Attenuation (DC Blocker prevents bass accumulator bias)
+    MesaMarkNode hotMesa("hot_mesa");
+    hotMesa.prepare(44100.0, numSamples);
+    hotMesa.setParameter("channel", 2.0f); // Lead
+    hotMesa.setParameter("gain", 10.0f);
+    hotMesa.setParameter("lead_drive", 10.0f);
+    hotMesa.setParameter("eq_active", 1.0f);
+    hotMesa.setParameter("eq80", 12.0f); // Max 80Hz graphic EQ boost
+    OwnedAudioBuffer dcBuffer(2, numSamples);
+    for (size_t i = 0; i < numSamples; ++i) {
+        dcBuffer.getChannelData(0)[i] = 0.8f;
+        dcBuffer.getChannelData(1)[i] = 0.8f;
+    }
+    auto dcView = dcBuffer.getView();
+    hotMesa.process(dcView);
+    for (size_t i = 0; i < numSamples; ++i) {
+        assert(!std::isnan(dcView.getSample(0, i)));
+        assert(!std::isinf(dcView.getSample(0, i)));
+    }
+    // With 20Hz DC blocker, steady state DC offset is bounded and decaying
+    assert(std::abs(dcView.getSample(0, numSamples - 1)) < 2.0f);
+
     std::cout << "  ✓ All DSP Nodes processing tests passed (including Mesa Mark III & Vox AC-30)!" << std::endl;
 }
 

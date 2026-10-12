@@ -95,6 +95,7 @@ void TapeDelayNode::process(AudioBufferView& buffer) {
 bool TapeDelayNode::setParameter(const std::string& name, float value) {
     if (name == "time") {
         m_delayTimeMs = std::clamp(value, 5.0f, 2500.0f);
+        m_tempoSync = false;
         return true;
     }
     if (name == "feedback" || name == "fb") {
