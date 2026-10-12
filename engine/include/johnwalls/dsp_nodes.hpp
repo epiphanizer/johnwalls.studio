@@ -207,7 +207,7 @@ private:
     float m_mix{0.50f};
     float m_flutter{0.15f};
     float m_saturation{0.25f};
-    bool m_tempoSync{true};
+    bool m_tempoSync{false};
     int m_divisionIndex{7}; // default: 1/8D
     float m_bpm{120.0f};
     float m_smoothedDelaySamples{0.0f};
