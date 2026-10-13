@@ -26,6 +26,12 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
                          }
 
                          juce::File distDir("/Users/seanhalls/Desktop/sh/johnwalls_studio/ui/dist");
+                         if (!distDir.isDirectory()) {
+                             distDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Desktop/sh/johnwalls_studio/ui/dist");
+                         }
+                         if (!distDir.isDirectory()) {
+                             distDir = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Desktop/bindu/sh/johnwalls_studio/ui/dist");
+                         }
                          juce::File file = distDir.getChildFile(localPath);
                          if (!file.existsAsFile()) return std::nullopt;
 

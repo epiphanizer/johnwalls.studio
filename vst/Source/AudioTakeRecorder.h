@@ -99,11 +99,6 @@ private:
     int64_t m_recordingStartMs{0};
     juce::File m_currentWavFile;
     juce::File m_currentMetaFile;
-
-    // Peak tracking during take
-    float m_takeMaxPeak{0.0f};
-    double m_takeSumSq{0.0};
-    int64_t m_takeSumSamples{0};
 };
 
 } // namespace johnwalls::johnwalls

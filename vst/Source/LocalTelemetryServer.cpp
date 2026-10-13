@@ -16,12 +16,11 @@ void LocalTelemetryServer::start() {
     if (isThreadRunning()) return;
     m_shouldExit = false;
 
-    // Try primary port, or fall back to 3013 / 3014 if occupied
-    if (!m_serverSocket.createListener(m_port, "127.0.0.1")) {
-        m_port = 3013;
-        if (!m_serverSocket.createListener(m_port, "127.0.0.1")) {
-            m_port = 3014;
-            m_serverSocket.createListener(m_port, "127.0.0.1");
+    // Try primary port, or fall back to higher ports if occupied by other plugin instances
+    for (int p = m_port; p <= m_port + 20; ++p) {
+        if (m_serverSocket.createListener(p, "127.0.0.1")) {
+            m_port = p;
+            break;
         }
     }
 
@@ -328,6 +327,15 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         searchDir(juce::File::getSpecialLocation(juce::File::userDesktopDirectory));
         searchDir(juce::File::getSpecialLocation(juce::File::userMusicDirectory));
         searchDir(juce::File::getSpecialLocation(juce::File::userDocumentsDirectory));
+        juce::File cacheVol("/Volumes/cache/archive/music");
+        if (cacheVol.isDirectory()) searchDir(cacheVol);
+        juce::File jwVol("/Volumes/johnwalls");
+        if (jwVol.isDirectory()) {
+            juce::File v1 = jwVol.getChildFile("Archive up to Oct 5th 2026/Volume 1");
+            if (v1.isDirectory()) searchDir(v1);
+            juce::File v1b = jwVol.getChildFile("Backup Oct 6th/Volume 1");
+            if (v1b.isDirectory()) searchDir(v1b);
+        }
 
         std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b) {
             return a.getLastModificationTime() > b.getLastModificationTime();

@@ -247,14 +247,14 @@ void JohnwallsStudioAudioProcessor::processBlock(juce::AudioBuffer<float>& buffe
             }
         };
         auto push = [this](DSPNode* node, int slot, const char* name, float value) {
-            if (m_pushed[slot] != value) {
+            if (std::isnan(m_pushed[slot]) || std::abs(m_pushed[slot] - value) > 1e-6f) {
                 m_pushed[slot] = value;
                 node->setParameter(name, value);
             }
         };
         auto pushBypass = [this](DSPNode* node, int slot, bool value) {
             const float v = value ? 1.0f : 0.0f;
-            if (m_pushed[slot] != v) {
+            if (std::isnan(m_pushed[slot]) || std::abs(m_pushed[slot] - v) > 0.5f) {
                 m_pushed[slot] = v;
                 node->setBypassed(value);
             }

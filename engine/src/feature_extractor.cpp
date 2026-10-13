@@ -46,6 +46,15 @@ void BiquadFilter::setup(Type type, float frequency, float sampleRate, float q) 
             m_a2 = 1.0f - alpha;
             break;
         }
+        case Type::Broadband: {
+            m_b0 = 1.0f;
+            m_b1 = 0.0f;
+            m_b2 = 0.0f;
+            a0   = 1.0f;
+            m_a1 = 0.0f;
+            m_a2 = 0.0f;
+            break;
+        }
         default:
             break;
     }

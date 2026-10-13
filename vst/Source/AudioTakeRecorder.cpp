@@ -41,7 +41,7 @@ void AudioTakeRecorder::ensureTakesDirectory() {
 
 void AudioTakeRecorder::processBlock(const juce::AudioBuffer<float>& buffer,
                                     bool isPlaying,
-                                    double bpm,
+                                    double /*bpm*/,
                                     int /*barNumber*/,
                                     double /*ppqPosition*/) noexcept {
     const int numSamples = buffer.getNumSamples();
@@ -119,21 +119,22 @@ bool AudioTakeRecorder::startRecording(const juce::String& trackName,
         return false;
     }
 
+    std::unique_ptr<juce::OutputStream> stream = std::move(outStream);
     juce::WavAudioFormat wavFormat;
     // Standard 24-bit PCM stereo WAV writer
-    auto rawWriter = wavFormat.createWriterFor(outStream.release(),
-                                               m_sampleRate.load(),
-                                               2, // stereo
-                                               24, // 24-bit
-                                               {},
-                                               0);
+    auto rawWriter = wavFormat.createWriterFor(
+        stream,
+        juce::AudioFormatWriterOptions{}
+            .withSampleRate(m_sampleRate.load())
+            .withNumChannels(2)
+            .withBitsPerSample(24));
     if (rawWriter == nullptr) {
         return false;
     }
 
     // 65536 samples buffer ~ 1.36 seconds of audio FIFO at 48kHz
     m_threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(
-        rawWriter, m_thread, 65536);
+        rawWriter.release(), m_thread, 65536);
 
     m_activeWriter.store(m_threadedWriter.get(), std::memory_order_release);
     m_isRecording.store(true, std::memory_order_release);
