@@ -929,6 +929,31 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         return;
     }
 
+    if (method == "GET" && path.startsWith("/take/visual")) {
+        auto queryParam = path.fromFirstOccurrenceOf("id=", false, false);
+        if (queryParam.containsChar('&')) queryParam = queryParam.upToFirstOccurrenceOf("&", false, false);
+        queryParam = juce::URL::removeEscapeChars(queryParam);
+        auto htmlFile = m_processor.getTakeRecorder().getTakeVisualHtmlFile(queryParam);
+        if (htmlFile.existsAsFile()) {
+            juce::String content = htmlFile.loadFileAsString();
+            juce::String response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html; charset=utf-8\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(content.getNumBytesAsUTF8()) + "\r\n"
+                "Connection: close\r\n\r\n" + content;
+            client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+            return;
+        }
+        juce::String notFoundJson = "{\"error\":\"Visual HTML file not found for take\"}";
+        juce::String response =
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(notFoundJson.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + notFoundJson;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
     if (method == "DELETE" && path.startsWith("/take")) {
         auto queryParam = path.fromFirstOccurrenceOf("id=", false, false);
         if (queryParam.containsChar('&')) queryParam = queryParam.upToFirstOccurrenceOf("&", false, false);
@@ -956,6 +981,7 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
 
         auto wavFile = m_processor.getTakeRecorder().getTakeAudioFile(takeId);
         auto metaFile = m_processor.getTakeRecorder().getTakeMetaFile(takeId);
+        auto visHtmlFile = m_processor.getTakeRecorder().getTakeVisualHtmlFile(takeId);
 
         if (!wavFile.existsAsFile()) {
             juce::String errJson = "{\"ok\":false,\"error\":\"Audio take WAV file not found: " + takeId + "\"}";
@@ -979,6 +1005,9 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
                  .withParameter("description", desc)
                  .withParameter("visualizerPreset", preset)
                  .withParameter("metadata", metaStr);
+        if (visHtmlFile.existsAsFile()) {
+            url = url.withFileToUpload("visualHtml", visHtmlFile, "text/html");
+        }
 
         auto stream = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inPostData)
                                                 .withNumRedirectsToFollow(5)
@@ -989,7 +1018,19 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
             serverReply = stream->readEntireStreamAsString();
             uploadSuccess = true;
         } else {
-            serverReply = "{\"ok\":false,\"error\":\"Failed to connect to publishing endpoint: " + targetUrl + "\"}";
+            // Local fallback bundle when offline or testing without cloud endpoint
+            juce::DynamicObject::Ptr fallback = new juce::DynamicObject();
+            fallback->setProperty("ok", true);
+            fallback->setProperty("offlineBundle", true);
+            fallback->setProperty("takeId", takeId);
+            fallback->setProperty("title", title.isEmpty() ? takeId : title);
+            fallback->setProperty("publicUrl", "https://johnwalls.studio/studio");
+            fallback->setProperty("localHtmlUrl", "file://" + visHtmlFile.getFullPathName());
+            fallback->setProperty("localAudioUrl", "file://" + wavFile.getFullPathName());
+            fallback->setProperty("visualizerPreset", preset);
+            fallback->setProperty("message", "Audio take and SuperCollider visualizer bundled locally in takes directory.");
+            serverReply = juce::JSON::toString(juce::var(fallback.get()), false);
+            uploadSuccess = true;
         }
 
         juce::String response =

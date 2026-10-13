@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Sparkles,
   RefreshCw,
+  Eye,
   X
 } from 'lucide-react';
 import { stateBridge, AudioTakeMetadata, TakeRecorderStatus } from '../utils/stateBridge';
@@ -21,6 +22,7 @@ interface TakeRecorderCockpitProps {
   currentTrackName?: string;
   currentBpm?: number;
   sessionTracks?: AbletonTrackInfo[];
+  onOpenVisualizer?: (take?: AudioTakeMetadata) => void;
 }
 
 export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
@@ -28,7 +30,8 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
   onClose,
   currentTrackName = 'Master',
   currentBpm = 120,
-  sessionTracks = []
+  sessionTracks = [],
+  onOpenVisualizer
 }) => {
   const [selectedTrack, setSelectedTrack] = useState<string>(currentTrackName);
   const [status, setStatus] = useState<TakeRecorderStatus | null>(null);
@@ -343,7 +346,18 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenVisualizer?.(take);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-cyan-400 rounded hover:bg-slate-800 transition"
+                            title="Preview with 60 FPS SuperCollider visualizer"
+                          >
+                            <Eye size={14} />
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -383,6 +397,37 @@ export const TakeRecorderCockpit: React.FC<TakeRecorderCockpitProps> = ({
                   <div className="text-amber-400 font-semibold">{selectedTake.fileName}</div>
                   <div className="text-slate-400">
                     {formatSecs(selectedTake.durationSeconds)} · {selectedTake.sampleRate}Hz · {selectedTake.bpm} BPM
+                  </div>
+                </div>
+
+                {/* Visualizer Bundle Preview Bar */}
+                <div className="p-2.5 bg-[#0a0d14] rounded-lg border border-cyan-900/40 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="text-[11px] font-mono text-cyan-300">
+                      Visual Bundle ({selectedTake.visualizerPreset || 'lissajous'})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onOpenVisualizer?.(selectedTake)}
+                      className="px-2 py-0.5 text-[10px] font-mono rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-700/60 text-cyan-300 transition flex items-center gap-1"
+                      title="Preview in 60 FPS in-plugin visualizer"
+                    >
+                      <Eye size={11} />
+                      <span>PREVIEW</span>
+                    </button>
+                    <a
+                      href={stateBridge.getVisualTakeUrl(selectedTake.takeId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-2 py-0.5 text-[10px] font-mono rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition flex items-center gap-1"
+                      title="Open standalone HTML5 audio-reactive vector bundle in browser"
+                    >
+                      <span>HTML5</span>
+                      <ExternalLink size={10} />
+                    </a>
                   </div>
                 </div>
 

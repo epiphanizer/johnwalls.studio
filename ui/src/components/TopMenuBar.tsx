@@ -13,11 +13,15 @@ import {
   Save,
   Trash2,
   Bookmark,
-  GitBranch
+  GitBranch,
+  Tv,
+  Sparkles,
+  Cpu
 } from 'lucide-react';
 import { PedalInstance, StateTelemetry, MusicalState, RackPreset } from '../types';
 import { FACTORY_PRESETS } from '../utils/rackLibrary';
 import { StudioWorkspace } from './StudioWorkspaceModal';
+import { stateBridge } from '../utils/stateBridge';
 
 interface TopMenuBarProps {
   onApplyRackPreset: (preset: RackPreset) => void;
@@ -44,6 +48,7 @@ interface TopMenuBarProps {
   onOpenPedalLibrary?: () => void;
   onOpenRoutingModal?: () => void;
   onOpenCaptureDispatch?: () => void;
+  onOpenVisualizer?: () => void;
 }
 
 export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
@@ -69,9 +74,10 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
   onOpenWorkspaceModal,
   onOpenPedalLibrary,
   onOpenRoutingModal,
-  onOpenCaptureDispatch
+  onOpenCaptureDispatch,
+  onOpenVisualizer
 }) => {
-  const [openMenu, setOpenMenu] = useState<'library' | 'routing' | 'inspect' | 'sensors' | null>(null);
+  const [openMenu, setOpenMenu] = useState<'library' | 'routing' | 'inspect' | 'sensors' | 'supercollider' | null>(null);
   const [savePatchName, setSavePatchName] = useState('');
   const [showAddSensorModal, setShowAddSensorModal] = useState(false);
   const [newId, setNewId] = useState('');
@@ -647,6 +653,129 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
           <Terminal size={12} />
           <span>CLI</span>
         </button>
+
+        {/* SuperCollider Engine & Visualizer Pill */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setOpenMenu(openMenu === 'supercollider' ? null : 'supercollider')}
+            className={`px-2 py-1 rounded flex items-center gap-1.5 transition text-[11px] font-bold border ${
+              telemetry?.supercollider?.visualRunning
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                : telemetry?.supercollider?.isRunning
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-slate-200'
+            }`}
+            title="SuperCollider DSP & Visualizer Engine"
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                telemetry?.supercollider?.visualRunning
+                  ? 'bg-amber-400 animate-pulse shadow-[0_0_6px_#f59e0b]'
+                  : telemetry?.supercollider?.isRunning
+                  ? 'bg-emerald-400 shadow-[0_0_6px_#10b981]'
+                  : 'bg-slate-600'
+              }`}
+            />
+            <span>
+              {telemetry?.supercollider?.visualRunning
+                ? 'SC: VISUAL'
+                : telemetry?.supercollider?.isRunning
+                ? `SC: ${telemetry.supercollider.port}`
+                : 'SC: STANDBY'}
+            </span>
+            <ChevronDown size={11} className="opacity-60" />
+          </button>
+
+          {openMenu === 'supercollider' && (
+            <div className="absolute right-0 top-full mt-1.5 w-64 bg-[#0d1019] border border-slate-700/80 rounded-xl shadow-2xl p-2 z-50 font-mono text-xs">
+              <div className="px-2.5 py-1.5 border-b border-slate-800 text-[10px] text-slate-400 font-sans flex items-center justify-between">
+                <span className="font-bold text-white uppercase tracking-wider">SuperCollider Engine</span>
+                <span className="text-[#e6af2e] font-mono">v3.14.1</span>
+              </div>
+              <div className="p-2 space-y-1 text-[11px]">
+                <div className="flex justify-between text-slate-400">
+                  <span>Server Status:</span>
+                  <span className={telemetry?.supercollider?.isRunning ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
+                    {telemetry?.supercollider?.statusText || 'OFFLINE'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>Visual Window:</span>
+                  <span className={telemetry?.supercollider?.visualRunning ? 'text-amber-400 font-bold' : 'text-slate-500'}>
+                    {telemetry?.supercollider?.visualRunning ? 'ACTIVE (sclang)' : 'OFF'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>OSC Packets:</span>
+                  <span className="text-cyan-300 font-bold">{telemetry?.supercollider?.oscSent || 0}</span>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-800 space-y-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stateBridge.toggleVisual();
+                    setOpenMenu(null);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg bg-[#e6af2e]/15 hover:bg-[#e6af2e]/30 text-[#e6af2e] font-bold text-[11px] flex items-center gap-2 transition"
+                >
+                  <Tv size={12} />
+                  <span>{telemetry?.supercollider?.visualRunning ? 'Close Native SC Window' : 'Pop Up Native SC Window'}</span>
+                </button>
+                {onOpenVisualizer && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenVisualizer();
+                      setOpenMenu(null);
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 text-[11px] flex items-center gap-2 transition"
+                  >
+                    <Activity size={12} className="text-cyan-400" />
+                    <span>Open In-Plugin Visualizer</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (telemetry?.supercollider?.isRunning) stateBridge.killSuperCollider();
+                    else stateBridge.bootSuperCollider();
+                    setOpenMenu(null);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 text-[11px] flex items-center gap-2 transition"
+                >
+                  <Cpu size={12} className="text-purple-400" />
+                  <span>{telemetry?.supercollider?.isRunning ? 'Kill SC Server' : 'Boot SC Server (UDP 57110)'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    stateBridge.sendSuperColliderAction('testTone');
+                    setOpenMenu(null);
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white text-[11px] flex items-center gap-2 transition"
+                >
+                  <Sparkles size={12} className="text-amber-400" />
+                  <span>Send 440Hz Test Tone</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Visualizer Trigger Button */}
+        {onOpenVisualizer && (
+          <button
+            type="button"
+            onClick={onOpenVisualizer}
+            className="px-2.5 py-1 rounded flex items-center gap-1.5 transition text-[11px] font-bold bg-[#e6af2e]/10 hover:bg-[#e6af2e]/25 text-[#e6af2e] border border-[#e6af2e]/40 shadow-sm"
+            title="Open Real-time SuperCollider Audio-Reactive Visualizer"
+          >
+            <Tv size={12} className="text-[#e6af2e]" />
+            <span>Visuals</span>
+          </button>
+        )}
 
         {/* Capture Audio & Studio Dispatch to johnwalls.studio */}
         <button

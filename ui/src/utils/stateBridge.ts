@@ -164,15 +164,25 @@ class StateBridge {
   }
 
   public executeSuperColliderAction(
-    action: 'freeAll' | 'testTone' | 'reboot' | 'runVisual' | 'stopVisual' | 'osc',
+    action: 'freeAll' | 'testTone' | 'reboot' | 'runVisual' | 'openVisualWindow' | 'toggleVisual' | 'stopVisual' | 'osc',
     payload?: string
   ): Promise<SuperColliderServerStatus> {
     return this.scRequest('superColliderAction', { action, payload }, '/supercollider/action', { action, payload });
   }
 
   /** Run an sclang patch (visuals) that is wired to the plugin's scsynth and /state/* OSC stream. */
-  public runVisual(code: string): Promise<SuperColliderServerStatus> {
-    return this.executeSuperColliderAction('runVisual', code);
+  public runVisual(presetOrCode: string = 'supercollider-lissajous'): Promise<SuperColliderServerStatus> {
+    return this.executeSuperColliderAction('runVisual', presetOrCode);
+  }
+
+  /** Launch or pop out native SuperCollider visual window via sclang. */
+  public openVisualWindow(presetOrCode: string = 'supercollider-lissajous'): Promise<SuperColliderServerStatus> {
+    return this.executeSuperColliderAction('openVisualWindow', presetOrCode);
+  }
+
+  /** Toggle the native SuperCollider visual window on or off. */
+  public toggleVisual(presetOrCode: string = 'supercollider-lissajous'): Promise<SuperColliderServerStatus> {
+    return this.executeSuperColliderAction('toggleVisual', presetOrCode);
   }
 
   public stopVisual(): Promise<SuperColliderServerStatus> {
@@ -385,6 +395,10 @@ class StateBridge {
     return `${this.activeBaseUrl}/take/audio?id=${encodeURIComponent(takeId)}`;
   }
 
+  public getVisualTakeUrl(takeId: string): string {
+    return `${this.activeBaseUrl}/take/visual?id=${encodeURIComponent(takeId)}`;
+  }
+
   public async deleteTake(takeId: string): Promise<boolean> {
     try {
       const res = await this.tryFetch(`/take?id=${encodeURIComponent(takeId)}`, {
@@ -505,6 +519,22 @@ export interface AudioTakeMetadata {
   peakDb: number;
   rmsDb: number;
   recordedAt: string;
+  visualizerPreset?: string;
+  visualManifest?: {
+    preset: string;
+    visualizerName: string;
+    engine: string;
+    colorPalette: string;
+    sampleCount: number;
+    timeline?: Array<{
+      t: number;
+      peak: number;
+      rms: number;
+      bpm: number;
+      bar: number;
+      ppq: number;
+    }>;
+  };
 }
 
 export interface TakeRecorderStatus {

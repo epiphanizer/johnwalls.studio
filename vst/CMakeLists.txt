@@ -91,4 +91,11 @@ if(JWS_BUILD_VST_TESTS)
         Source/SuperColliderManager.cpp)
     target_include_directories(supercollider_live_test PRIVATE Source)
     target_link_libraries(supercollider_live_test PRIVATE juce::juce_core)
+
+    juce_add_console_app(take_visual_bundle_test PRODUCT_NAME "take_visual_bundle_test")
+    target_sources(take_visual_bundle_test PRIVATE
+        tests/take_visual_bundle_test.cpp
+        Source/AudioTakeRecorder.cpp)
+    target_include_directories(take_visual_bundle_test PRIVATE Source)
+    target_link_libraries(take_visual_bundle_test PRIVATE juce::juce_audio_basics juce::juce_audio_formats juce::juce_core)
 endif()

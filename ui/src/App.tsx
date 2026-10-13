@@ -10,9 +10,10 @@ import { StudioWorkspaceModal, StudioWorkspace } from './components/StudioWorksp
 import { PedalLibraryModal } from './components/PedalLibraryModal';
 import { StudioRoutingModal } from './components/StudioRoutingModal';
 import { TakeRecorderCockpit } from './components/TakeRecorderCockpit';
+import { VisualizerModal } from './components/VisualizerModal';
 import { audioEngine } from './components/AudioEngineBridge';
 import { sp404AudioEngine } from './components/SP404AudioEngine';
-import { stateBridge } from './utils/stateBridge';
+import { stateBridge, AudioTakeMetadata } from './utils/stateBridge';
 import {
   PedalInstance,
   PedalType,
@@ -220,6 +221,8 @@ export const App: React.FC = () => {
   const [preselectedPedalToSaveId, setPreselectedPedalToSaveId] = useState<string | null>(null);
   const [isRoutingModalOpen, setIsRoutingModalOpen] = useState<boolean>(false);
   const [isCaptureDispatchOpen, setIsCaptureDispatchOpen] = useState<boolean>(false);
+  const [isVisualizerOpen, setIsVisualizerOpen] = useState<boolean>(false);
+  const [visualizerTake, setVisualizerTake] = useState<AudioTakeMetadata | null>(null);
 
   useEffect(() => {
     try {
@@ -1104,9 +1107,13 @@ export const App: React.FC = () => {
           '  publish [takeId|latest] [title]  Direct ship audio take to johnwalls.studio with SuperCollider visualizer\n' +
           '  ship [takeId|latest] [title]     Alias for \'publish\'\n' +
           '  push / deploy                    Build and auto-push studio app bundle to https://johnwalls.studio/app\n' +
-          '  dispatch / publish open          Open tactile Audio Capture & Web Publishing Cockpit modal\n\n' +
-          'SUPERCOLLIDER DSP ENGINE:\n' +
-          '  sc <boot|kill|status|test|free> Control scsynth audio server with real OSC\n\n' +
+          '  dispatch / publish open          Open tactile Audio Capture & Web Publishing Cockpit modal\n' +
+          '  visual [native]                  Open 60 FPS real-time visualizer modal or native SC window\n\n' +
+          'SUPERCOLLIDER DSP & VISUAL ENGINE:\n' +
+          '  sc <boot|kill|status|test|free>  Control scsynth audio server with real OSC\n' +
+          '  sc visual [preset]               Launch native SuperCollider 60 FPS Visual Window\n' +
+          '  sc stopvisual                    Close native SuperCollider visual window\n' +
+          '  sc modal                         Open in-plugin reactive visualizer modal\n\n' +
           'STUDIO RACK & SIGNAL CHAIN:\n' +
           '  add pedal <delay|filter|drive|ducker|mesa|vox>   Instantiate DSP stompbox or amp\n' +
           '  remove <id>                                     Remove pedal from active board\n' +
@@ -1332,8 +1339,42 @@ export const App: React.FC = () => {
         stateBridge.sendSuperColliderAction('freeAll').then((res: SuperColliderServerStatus) => {
           addLog(res.lastError ? 'error' : 'output', res.lastError || 'Sent /g_freeAll (free all active nodes) to scsynth.');
         }).catch((err: any) => addLog('error', `SC Free Error: ${err?.message || String(err)}`));
+      } else if (sub === 'visual' || sub === 'gui' || sub === 'window') {
+        const preset = tokens[2]?.toLowerCase() || 'lissajous';
+        stateBridge.runVisual(preset).then((res: SuperColliderServerStatus) => {
+          addLog(
+            res.lastError ? 'error' : 'output',
+            res.lastError || `Launched SuperCollider Native Visualizer Window (Preset: ${preset}). Window fronted at 60 FPS.`
+          );
+        }).catch((err: any) => addLog('error', `SC Visual Error: ${err?.message || String(err)}`));
+      } else if (sub === 'stopvisual' || sub === 'closevisual') {
+        stateBridge.sendSuperColliderAction('stopVisual').then((res: SuperColliderServerStatus) => {
+          addLog(res.lastError ? 'error' : 'output', res.lastError || 'SuperCollider Visualizer Window closed.');
+        }).catch((err: any) => addLog('error', `SC Stop Visual Error: ${err?.message || String(err)}`));
+      } else if (sub === 'modal' || sub === 'view') {
+        setVisualizerTake(null);
+        setIsVisualizerOpen(true);
+        addLog('output', 'Opened in-plugin Real-Time Visualizer Modal.');
       } else {
-        addLog('error', 'Usage: sc <boot|kill|status|test|free>');
+        addLog('error', 'Usage: sc <boot|kill|status|test|free|visual [preset]|stopvisual|modal>');
+      }
+      return;
+    }
+
+    if (verb === 'visual' || verb === 'visualizer' || verb === 'scope3d') {
+      const sub = tokens[1]?.toLowerCase();
+      if (sub === 'native' || sub === 'gui' || sub === 'window') {
+        const patch = tokens[2]?.toLowerCase() || 'lissajous';
+        stateBridge.runVisual(patch).then((res: SuperColliderServerStatus) => {
+          addLog(
+            res.lastError ? 'error' : 'output',
+            res.lastError || `Launched SuperCollider Native Visualizer Window (Preset: ${patch}).`
+          );
+        }).catch((err: any) => addLog('error', `SC Visual Error: ${err?.message || String(err)}`));
+      } else {
+        setVisualizerTake(null);
+        setIsVisualizerOpen(true);
+        addLog('output', 'Opened in-plugin Real-Time Audio-Reactive Visualizer Modal.');
       }
       return;
     }
@@ -1730,6 +1771,10 @@ export const App: React.FC = () => {
           onOpenPedalLibrary={() => setIsPedalLibraryOpen(true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
           onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+          onOpenVisualizer={() => {
+            setVisualizerTake(null);
+            setIsVisualizerOpen(true);
+          }}
         />
 
         {/* Global Studio Signal Flow Ribbon */}
@@ -1802,6 +1847,10 @@ export const App: React.FC = () => {
           onSwitchToSP404={() => handleSelectWorkspace('sp404', true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
           onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+          onOpenVisualizer={() => {
+            setVisualizerTake(null);
+            setIsVisualizerOpen(true);
+          }}
         />
       )}
 
@@ -1862,6 +1911,19 @@ export const App: React.FC = () => {
         currentTrackName={telemetry.currentTrackName || 'Master'}
         currentBpm={telemetry.bpm}
         sessionTracks={telemetry.sessionTracks || []}
+        onOpenVisualizer={(take) => {
+          setVisualizerTake(take || null);
+          setIsVisualizerOpen(true);
+        }}
+      />
+
+      {/* Real-Time Audio-Reactive 60 FPS SuperCollider Visualizer Modal */}
+      <VisualizerModal
+        isOpen={isVisualizerOpen}
+        onClose={() => setIsVisualizerOpen(false)}
+        telemetry={telemetry}
+        auditionTake={visualizerTake}
+        onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
       />
     </div>
   );
