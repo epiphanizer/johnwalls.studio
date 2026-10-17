@@ -21,7 +21,7 @@ public:
 private:
     struct PendingSP404Transfer {
         juce::var metadata;
-        juce::String base64;
+        juce::MemoryBlock binaryData;
         int expectedChunks{0};
         int nextChunk{0};
     };

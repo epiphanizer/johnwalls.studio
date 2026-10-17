@@ -440,7 +440,7 @@ bool SuperColliderManager::boot(int port) {
     m_lastReplyMs.store(0);
 
     const std::string script = "exec " + shQuote(m_binaryPath) + " -u " + std::to_string(port)
-        + " -a 1024 -m 131072 -z 64 -l 32 -i 2 -o 2 > " + shQuote(m_serverLogFile.getFullPathName().toStdString())
+        + " -a 1024 -m 131072 -z 64 -l 32 -i 0 -o 2 > " + shQuote(m_serverLogFile.getFullPathName().toStdString())
         + " 2>&1 < /dev/null";
 
     m_server = std::make_unique<juce::ChildProcess>();

@@ -35,6 +35,7 @@ target_sources(johnwalls_studio PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/LocalTelemetryServer.cpp
+    Source/UnixDomainSocketServer.cpp
     Source/GlobalSessionHub.cpp
     Source/SuperColliderManager.cpp
     Source/ReactiveMidiEngine.cpp
@@ -85,6 +86,14 @@ if(JWS_BUILD_VST_TESTS)
     target_include_directories(sp404_state_test PRIVATE Source "${ENGINE_DIR}/include")
     target_link_libraries(sp404_state_test PRIVATE juce::juce_core)
 
+    juce_add_console_app(sp404_dsp_bench_test PRODUCT_NAME "sp404_dsp_bench_test")
+    target_sources(sp404_dsp_bench_test PRIVATE
+        tests/sp404_dsp_bench_test.cpp
+        Source/SP404Engine.cpp
+        "${ENGINE_DIR}/src/dsp_nodes.cpp")
+    target_include_directories(sp404_dsp_bench_test PRIVATE Source "${ENGINE_DIR}/include")
+    target_link_libraries(sp404_dsp_bench_test PRIVATE juce::juce_core)
+
     juce_add_console_app(supercollider_live_test PRODUCT_NAME "supercollider_live_test")
     target_sources(supercollider_live_test PRIVATE
         tests/supercollider_live_test.cpp
@@ -92,10 +101,30 @@ if(JWS_BUILD_VST_TESTS)
     target_include_directories(supercollider_live_test PRIVATE Source)
     target_link_libraries(supercollider_live_test PRIVATE juce::juce_core)
 
-    juce_add_console_app(take_visual_bundle_test PRODUCT_NAME "take_visual_bundle_test")
-    target_sources(take_visual_bundle_test PRIVATE
-        tests/take_visual_bundle_test.cpp
-        Source/AudioTakeRecorder.cpp)
-    target_include_directories(take_visual_bundle_test PRIVATE Source)
-    target_link_libraries(take_visual_bundle_test PRIVATE juce::juce_audio_basics juce::juce_audio_formats juce::juce_core)
+    juce_add_console_app(processor_silence_test PRODUCT_NAME "processor_silence_test")
+    target_sources(processor_silence_test PRIVATE
+        tests/processor_silence_test.cpp
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+        Source/LocalTelemetryServer.cpp
+        Source/UnixDomainSocketServer.cpp
+        Source/GlobalSessionHub.cpp
+        Source/SuperColliderManager.cpp
+        Source/ReactiveMidiEngine.cpp
+        Source/SP404Engine.cpp
+        Source/AudioTakeRecorder.cpp
+        "${ENGINE_DIR}/src/dsp_nodes.cpp"
+        "${ENGINE_DIR}/src/pedal_rack.cpp"
+        "${ENGINE_DIR}/src/feature_extractor.cpp"
+        "${ENGINE_DIR}/src/state_governor.cpp"
+        "${ENGINE_DIR}/src/cli_grammar.cpp")
+    target_compile_definitions(processor_silence_test PRIVATE
+        JUCE_WEB_BROWSER=1
+        JUCE_USE_CURL=0)
+    target_include_directories(processor_silence_test PRIVATE Source "${ENGINE_DIR}/include")
+    target_link_libraries(processor_silence_test PRIVATE
+        juce::juce_audio_utils
+        juce::juce_audio_processors
+        juce::juce_gui_extra
+        juce::juce_recommended_config_flags)
 endif()

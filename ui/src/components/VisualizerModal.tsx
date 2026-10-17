@@ -66,6 +66,8 @@ export const VisualizerModal: React.FC<VisualizerModalProps> = ({
   const phaseRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
   const waterfallHistoryRef = useRef<Array<{ peak: number; rms: number; note: number }>>([]);
+  const telemetryRef = useRef(telemetry);
+  telemetryRef.current = telemetry;
 
   // Sync SC status from telemetry or polling
   useEffect(() => {
@@ -130,10 +132,11 @@ export const VisualizerModal: React.FC<VisualizerModalProps> = ({
         sumSq += v * v;
       }
       const liveRms = Math.sqrt(sumSq / waveBuffer.length);
-      const effectiveRms = Math.max(liveRms, telemetry.sidechainRMS || 0);
-      const effectivePeak = Math.max(peak, telemetry.peakDb ? Math.pow(10, telemetry.peakDb / 20) : 0);
+      const telem = telemetryRef.current;
+      const effectiveRms = Math.max(liveRms, telem.sidechainRMS || 0);
+      const effectivePeak = Math.max(peak, telem.peakDb ? Math.pow(10, telem.peakDb / 20) : 0);
 
-      const bpm = telemetry.bpm || 120;
+      const bpm = telem.bpm || 120;
       const bpmFactor = bpm / 120;
       phaseRef.current += 0.025 * bpmFactor;
       const phase = phaseRef.current;
@@ -267,7 +270,7 @@ export const VisualizerModal: React.FC<VisualizerModalProps> = ({
         hist.unshift({
           peak: effectivePeak,
           rms: effectiveRms,
-          note: telemetry.lastMidiNote || 60
+          note: telem.lastMidiNote || 60
         });
         if (hist.length > 50) hist.pop();
 
@@ -313,7 +316,7 @@ export const VisualizerModal: React.FC<VisualizerModalProps> = ({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isOpen, preset, telemetry]);
+  }, [isOpen, preset]);
 
   if (!isOpen) return null;
 

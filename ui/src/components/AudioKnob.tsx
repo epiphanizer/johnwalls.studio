@@ -16,7 +16,7 @@ export interface AudioKnobProps {
   onChange: (val: number) => void;
 }
 
-export const AudioKnob: React.FC<AudioKnobProps> = ({
+export const AudioKnob: React.FC<AudioKnobProps> = React.memo(({
   label,
   value,
   min,
@@ -325,4 +325,4 @@ export const AudioKnob: React.FC<AudioKnobProps> = ({
       </div>
     </div>
   );
-};
+});

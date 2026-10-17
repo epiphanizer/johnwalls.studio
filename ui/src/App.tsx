@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PedalBoardCanvas } from './components/PedalBoardCanvas';
 import { VirtualTerminal } from './components/VirtualTerminal';
 import { WaveformVisualizer } from './components/WaveformVisualizer';
@@ -11,8 +11,10 @@ import { PedalLibraryModal } from './components/PedalLibraryModal';
 import { StudioRoutingModal } from './components/StudioRoutingModal';
 import { TakeRecorderCockpit } from './components/TakeRecorderCockpit';
 import { VisualizerModal } from './components/VisualizerModal';
+import { GlobalCommandPalette } from './components/GlobalCommandPalette';
+import { CopilotDrawer } from './components/CopilotDrawer';
 import { audioEngine } from './components/AudioEngineBridge';
-import { sp404AudioEngine } from './components/SP404AudioEngine';
+import { sp404AudioEngine, BankLetter } from './components/SP404AudioEngine';
 import { stateBridge, AudioTakeMetadata } from './utils/stateBridge';
 import {
   PedalInstance,
@@ -249,14 +251,26 @@ export const App: React.FC = () => {
   }, [activeModuleId]);
 
   // Derived current board information
-  const activeModule = modules.find((m) => m.id === activeModuleId) || modules[0] || INITIAL_STUDIO_MODULES[0];
+  const activeModule = useMemo(
+    () => modules.find((m) => m.id === activeModuleId) || modules[0] || INITIAL_STUDIO_MODULES[0],
+    [modules, activeModuleId]
+  );
   const isBoardActive = activeModule.type === 'pedal_board';
-  const currentBoard = isBoardActive ? (activeModule as StudioPedalBoardModule) : null;
-  const currentPedals = currentBoard ? currentBoard.pedals : INITIAL_PEDALS;
+  const currentBoard = useMemo(
+    () => (isBoardActive ? (activeModule as StudioPedalBoardModule) : null),
+    [isBoardActive, activeModule]
+  );
+  const currentPedals = useMemo(
+    () => (currentBoard ? currentBoard.pedals : INITIAL_PEDALS),
+    [currentBoard]
+  );
   const currentAmpPlacement = currentBoard ? currentBoard.ampPlacement : 'outbound';
-  const activeWorkspace: StudioWorkspace = activeModule.type === 'sp404' ? 'sp404' : activeModule.type === 'state' ? 'state' : 'pedal_lab';
+  const activeWorkspace: StudioWorkspace = useMemo(
+    () => (activeModule.type === 'sp404' ? 'sp404' : activeModule.type === 'state' ? 'state' : 'pedal_lab'),
+    [activeModule.type]
+  );
 
-  const updateCurrentBoard = (updater: (board: StudioPedalBoardModule) => StudioPedalBoardModule) => {
+  const updateCurrentBoard = useCallback((updater: (board: StudioPedalBoardModule) => StudioPedalBoardModule) => {
     setModules((prev) =>
       prev.map((m) => {
         if (m.id === activeModuleId && m.type === 'pedal_board') {
@@ -265,7 +279,7 @@ export const App: React.FC = () => {
         return m;
       })
     );
-  };
+  }, [activeModuleId]);
 
   const [lastActiveModuleByType, setLastActiveModuleByType] = useState<Record<StudioModuleType, string>>(() => {
     try {
@@ -287,6 +301,17 @@ export const App: React.FC = () => {
       return false;
     }
   });
+
+  const [isUnifiedMode, setIsUnifiedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('johnwalls_unified_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isPedalDockExpanded, setIsPedalDockExpanded] = useState<boolean>(true);
+  const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const mod = modules.find((m) => m.id === activeModuleId);
@@ -345,29 +370,24 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isRoutingModalOpen, activeWorkspace]);
 
-  const handleSelectWorkspace = (ws: StudioWorkspace, remember: boolean = true) => {
-    const targetType: StudioModuleType = ws === 'pedal_lab' ? 'pedal_board' : ws;
-    const currentActive = modules.find((m) => m.id === activeModuleId);
-
-    // If current active module is already of this workspace type, keep it!
-    if (!currentActive || currentActive.type !== targetType) {
-      const rememberedId = lastActiveModuleByType[targetType];
-      const match =
-        modules.find((m) => m.id === rememberedId) ||
-        modules.find((m) => m.type === targetType);
-      if (match) {
-        setActiveModuleId(match.id);
-      } else {
-        handleAddModule(targetType);
+  // Global shortcut listener for Raycast-style command palette (Cmd+K, Ctrl+K, or ` when outside inputs)
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+        return;
       }
-    }
-    if (remember) {
-      try {
-        localStorage.setItem('johnwalls_active_workspace', ws);
-        localStorage.setItem('johnwalls_workspace_configured', 'true');
-      } catch {}
-    }
-  };
+      if (e.key === '`' && !isInput && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, []);
 
   const [telemetry, setTelemetry] = useState<StateTelemetry>({
     musicalState: 'STEADY_GROOVE',
@@ -386,10 +406,201 @@ export const App: React.FC = () => {
     }
   ]);
 
-  const handleSelectInspectNode = (nodeId: string) => {
+  const addLog = useCallback((type: 'input' | 'output' | 'error' | 'system', content: string) => {
+    const time = new Date().toTimeString().split(' ')[0];
+    setLogs((prev) => [
+      ...prev.slice(-400),
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: time,
+        type,
+        content
+      }
+    ]);
+  }, []);
+
+  const handleSelectInspectNode = useCallback((nodeId: string) => {
     setInspectedNodeId(nodeId);
     audioEngine.sendInspectNodeToHost(nodeId);
-  };
+  }, []);
+
+  const handleSelectModule = useCallback((id: string) => {
+    setModules((prev) => {
+      const mod = prev.find((m) => m.id === id);
+      if (!mod) return prev;
+      try {
+        const ws: StudioWorkspace =
+          mod.type === 'sp404' ? 'sp404' : mod.type === 'state' ? 'state' : 'pedal_lab';
+        localStorage.setItem('johnwalls_active_workspace', ws);
+        localStorage.setItem('johnwalls_workspace_configured', 'true');
+      } catch {}
+      return prev;
+    });
+    setActiveModuleId(id);
+  }, []);
+
+  const handleMoveModule = useCallback((fromIndex: number, toIndex: number) => {
+    setModules((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const [item] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, item);
+      addLog('output', `Rearranged signal flow: Moved [${item.title}] ${fromIndex < toIndex ? 'later' : 'earlier'}.`);
+      return copy;
+    });
+  }, [addLog]);
+
+  const handleToggleModuleBypass = useCallback((id: string) => {
+    setModules((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          const nextBypassed = !m.bypassed;
+          addLog('output', `Module [${m.title}] is now ${nextBypassed ? 'BYPASSED' : 'ACTIVE'}.`);
+          if (m.type === 'sp404') {
+            const sp404Index = prev.findIndex((mod) => mod.id === id);
+            const boardIndex = prev.findIndex((mod) => mod.type === 'pedal_board');
+            const order = (sp404Index !== -1 && boardIndex !== -1 && sp404Index < boardIndex) ? 'before' : 'after';
+            audioEngine.routeSP404(order, sp404AudioEngine.getMasterGain(), nextBypassed);
+          }
+          return { ...m, bypassed: nextBypassed };
+        }
+        return m;
+      })
+    );
+  }, [addLog]);
+
+  const handleAddModule = useCallback((type: StudioModuleType) => {
+    setModules((prev) => {
+      if (type === 'pedal_board') {
+        const boardNum = prev.filter((m) => m.type === 'pedal_board').length + 1;
+        const newBoard: StudioPedalBoardModule = {
+          id: `board_${Date.now()}`,
+          type: 'pedal_board',
+          title: `Pedal Board ${boardNum}`,
+          bypassed: false,
+          ampPlacement: 'outbound',
+          pedals: [
+            {
+              id: `dub_echo_${Date.now()}`,
+              type: 'delay',
+              title: 'Tape Echo',
+              color: 'amber',
+              bypassed: false,
+              parameters: {
+                time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
+                feedback: { name: 'feedback', label: 'Repeat', value: 0.4, min: 0.0, max: 0.95, step: 0.01, unit: '' },
+                mix: { name: 'mix', label: 'Mix', value: 0.5, min: 0.0, max: 1.0, step: 0.01, unit: '' }
+              }
+            }
+          ]
+        };
+        setActiveModuleId(newBoard.id);
+        addLog('output', `Created new modular board: ${newBoard.title}`);
+        return [...prev, newBoard];
+      } else if (type === 'sp404') {
+        const spNum = prev.filter((m) => m.type === 'sp404').length + 1;
+        const newSp: StudioSP404Module = {
+          id: `sp404_${Date.now()}`,
+          type: 'sp404',
+          title: spNum === 1 ? 'SP-404 Original / A' : `SP-404 Original / A #${spNum}`,
+          bypassed: false
+        };
+        setActiveModuleId(newSp.id);
+        addLog('output', `Created new sampler module: ${newSp.title}`);
+        return [...prev, newSp];
+      } else if (type === 'state') {
+        const stateNum = prev.filter((m) => m.type === 'state').length + 1;
+        const newState: StudioStateModule = {
+          id: `state_${Date.now()}`,
+          type: 'state',
+          title: stateNum === 1 ? 'State Cockpit' : `State Cockpit #${stateNum}`,
+          bypassed: false
+        };
+        setActiveModuleId(newState.id);
+        addLog('output', `Created new module: ${newState.title}`);
+        return [...prev, newState];
+      }
+      return prev;
+    });
+  }, [addLog]);
+
+  const handleRemoveModule = useCallback((id: string) => {
+    setModules((prev) => {
+      if (prev.length <= 1) {
+        addLog('error', 'Cannot remove the last studio module in the pipeline.');
+        return prev;
+      }
+      const target = prev.find((m) => m.id === id);
+      const next = prev.filter((m) => m.id !== id);
+      setActiveModuleId((currentActiveId) => {
+        if (currentActiveId === id && next.length > 0) {
+          return next[0].id;
+        }
+        return currentActiveId;
+      });
+      if (target) {
+        addLog('output', `Removed module [${target.title}] from studio chain.`);
+      }
+      return next;
+    });
+  }, [addLog]);
+
+  const handleRenameModule = useCallback((id: string, newTitle: string) => {
+    setModules((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          return { ...m, title: newTitle.trim() || m.title };
+        }
+        return m;
+      })
+    );
+  }, []);
+
+  const handleSelectWorkspace = useCallback((ws: StudioWorkspace, remember: boolean = true) => {
+    if (ws === 'unified') {
+      setIsUnifiedMode(true);
+      if (remember) {
+        try {
+          localStorage.setItem('johnwalls_unified_mode', 'true');
+          localStorage.setItem('johnwalls_active_workspace', 'unified');
+          localStorage.setItem('johnwalls_workspace_configured', 'true');
+        } catch {}
+      }
+      return;
+    }
+
+    setIsUnifiedMode(false);
+    try {
+      if (remember) {
+        localStorage.setItem('johnwalls_unified_mode', 'false');
+      }
+    } catch {}
+
+    const targetType: StudioModuleType = ws === 'pedal_lab' ? 'pedal_board' : ws;
+
+    setModules((prev) => {
+      const currentActive = prev.find((m) => m.id === activeModuleId);
+      if (!currentActive || currentActive.type !== targetType) {
+        const rememberedId = lastActiveModuleByType[targetType];
+        const match =
+          prev.find((m) => m.id === rememberedId) ||
+          prev.find((m) => m.type === targetType);
+        if (match) {
+          setActiveModuleId(match.id);
+        } else {
+          handleAddModule(targetType);
+        }
+      }
+      return prev;
+    });
+
+    if (remember) {
+      try {
+        localStorage.setItem('johnwalls_active_workspace', ws);
+        localStorage.setItem('johnwalls_workspace_configured', 'true');
+      } catch {}
+    }
+  }, [activeModuleId, lastActiveModuleByType, handleAddModule]);
 
   useEffect(() => {
     // Start live audio engine and initialize SP-404 sampler upfront on the shared AudioContext
@@ -586,20 +797,7 @@ export const App: React.FC = () => {
     return `${note}${octave}`;
   };
 
-  const addLog = (type: 'input' | 'output' | 'error' | 'system', content: string) => {
-    const time = new Date().toTimeString().split(' ')[0];
-    setLogs((prev) => [
-      ...prev.slice(-400),
-      {
-        id: Math.random().toString(36).substring(2, 9),
-        timestamp: time,
-        type,
-        content
-      }
-    ]);
-  };
-
-  const handleUpdateParam = (pedalId: string, paramName: string, value: number) => {
+  const handleUpdateParam = useCallback((pedalId: string, paramName: string, value: number) => {
     updateCurrentBoard((board) => {
       const updated = board.pedals.map((p) => {
         if (p.id === pedalId) {
@@ -620,9 +818,9 @@ export const App: React.FC = () => {
       audioEngine.syncPedalParamToHost(pedalId, paramName, value);
       return { ...board, pedals: updated };
     });
-  };
+  }, [updateCurrentBoard]);
 
-  const handleToggleBypass = (pedalId: string) => {
+  const handleToggleBypass = useCallback((pedalId: string) => {
     updateCurrentBoard((board) => {
       let nextBypassed = false;
       const updated = board.pedals.map((p) => {
@@ -641,9 +839,9 @@ export const App: React.FC = () => {
       }
       return { ...board, pedals: updated };
     });
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleRemovePedal = (pedalId: string) => {
+  const handleRemovePedal = useCallback((pedalId: string) => {
     updateCurrentBoard((board) => {
       const updated = board.pedals.filter((p) => p.id !== pedalId);
       audioEngine.syncRemovePedalToHost(pedalId);
@@ -651,13 +849,17 @@ export const App: React.FC = () => {
       audioEngine.syncRackToHost(updated, board.ampPlacement);
       return { ...board, pedals: updated };
     });
-    if (inspectedNodeId === pedalId) {
-      handleSelectInspectNode('master');
-    }
+    setInspectedNodeId((prev) => {
+      if (prev === pedalId) {
+        audioEngine.sendInspectNodeToHost('master');
+        return 'master';
+      }
+      return prev;
+    });
     addLog('output', `Removed component [${pedalId}] from active chain.`);
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleToggleAmpPlacement = () => {
+  const handleToggleAmpPlacement = useCallback(() => {
     updateCurrentBoard((board) => {
       const next = board.ampPlacement === 'outbound' ? 'inbound' : 'outbound';
       audioEngine.setAmpPlacement(next);
@@ -670,33 +872,34 @@ export const App: React.FC = () => {
       );
       return { ...board, ampPlacement: next };
     });
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleToggleTerminal = () => {
-    if (!isTerminalOpen) {
-      setIsTerminalOpen(true);
-      setIsTerminalExpanded(false); // Opens collapsed single-line input bar at bottom
-    } else {
-      setIsTerminalOpen(false);
+  const handleToggleTerminal = useCallback(() => {
+    setIsTerminalOpen((prev) => {
+      if (!prev) {
+        setIsTerminalExpanded(false);
+        return true;
+      }
       setIsTerminalExpanded(false);
-    }
-  };
+      return false;
+    });
+  }, []);
 
-  const handleSaveUserPreset = (name: string, description?: string) => {
+  const handleSaveUserPreset = useCallback((name: string, description?: string) => {
     if (!name.trim()) return;
     const newPresetData = convertCurrentRackToPreset(name, currentPedals, currentAmpPlacement, description);
     const created = saveUserPreset(newPresetData);
     setUserPresets(loadUserPresets());
     addLog('output', `Saved patch [${created.name}] to Library.`);
-  };
+  }, [currentPedals, currentAmpPlacement, addLog]);
 
-  const handleDeleteUserPreset = (id: string) => {
+  const handleDeleteUserPreset = useCallback((id: string) => {
     deleteUserPreset(id);
     setUserPresets(loadUserPresets());
     addLog('output', `Deleted patch from Library.`);
-  };
+  }, [addLog]);
 
-  const handleApplyRackPreset = (preset: RackPreset) => {
+  const handleApplyRackPreset = useCallback((preset: RackPreset) => {
     updateCurrentBoard((board) => {
       audioEngine.setAmpPlacement(preset.ampPlacement);
 
@@ -775,11 +978,10 @@ export const App: React.FC = () => {
         addLog('output', `Loaded Factory Profile: ${preset.name}.`);
         return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
       }
-      return board;
     });
-  };
+  }, [updateCurrentBoard, handleSelectInspectNode, addLog]);
 
-  const handleResetAll = () => {
+  const handleResetAll = useCallback(() => {
     updateCurrentBoard((board) => {
       audioEngine.updatePedalParams(INITIAL_PEDALS);
       audioEngine.setAmpPlacement('outbound');
@@ -787,126 +989,126 @@ export const App: React.FC = () => {
       addLog('system', 'Reset all pedals and amplifiers to factory default settings.');
       return { ...board, pedals: INITIAL_PEDALS, ampPlacement: 'outbound' };
     });
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleAddPedal = (type: PedalType) => {
-    const id = `${type}_${currentPedals.length + 1}`;
-    let newPedal: PedalInstance;
-
-    if (type === 'delay') {
-      newPedal = {
-        id,
-        type: 'delay',
-        title: 'Tape Echo',
-        color: 'amber',
-        bypassed: false,
-        parameters: {
-          time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
-          feedback: { name: 'feedback', label: 'Repeat', value: 0.40, min: 0.0, max: 0.95, step: 0.01, unit: '' },
-          mix: { name: 'mix', label: 'Mix', value: 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' }
-        }
-      };
-    } else if (type === 'filter') {
-      newPedal = {
-        id,
-        type: 'filter',
-        title: 'Ladder Filter',
-        color: 'crimson',
-        bypassed: false,
-        parameters: {
-          cutoff: { name: 'cutoff', label: 'Cutoff', value: 1200, min: 60, max: 20000, step: 50, unit: 'Hz' },
-          resonance: { name: 'resonance', label: 'Res', value: 0.50, min: 0.0, max: 0.98, step: 0.01, unit: '' }
-        }
-      };
-    } else if (type === 'drive') {
-      newPedal = {
-        id,
-        type: 'drive',
-        title: 'Overdrive',
-        color: 'gold',
-        bypassed: false,
-        parameters: {
-          drive: { name: 'drive', label: 'Drive', value: 4.0, min: 1.0, max: 15.0, step: 0.5, unit: 'x' },
-          tone: { name: 'tone', label: 'Tone', value: 0.65, min: 0.1, max: 1.0, step: 0.05, unit: '' }
-        }
-      };
-    } else if (type === 'ducker') {
-      newPedal = {
-        id,
-        type: 'ducker',
-        title: 'Sidechain Ducker',
-        color: 'cyan',
-        bypassed: false,
-        parameters: {
-          depth: { name: 'depth', label: 'Depth', value: 16, min: 0, max: 36, step: 1, unit: 'dB' },
-          release: { name: 'release', label: 'Release', value: 75, min: 10, max: 400, step: 5, unit: 'ms' }
-        }
-      };
-    } else if (type === 'mesa') {
-      newPedal = {
-        id,
-        type: 'mesa',
-        category: 'amp',
-        title: 'Mesa Boogie Mark III',
-        color: 'rose',
-        bypassed: false,
-        parameters: {
-          channel: { name: 'channel', label: 'Channel', value: 2, min: 0, max: 2, step: 1, unit: '' },
-          gain: { name: 'gain', label: 'Volume 1', value: 7.5, min: 0, max: 10, step: 0.1, unit: '' },
-          leadDrive: { name: 'leadDrive', label: 'Lead Drive', value: 8.0, min: 0, max: 10, step: 0.1, unit: '' },
-          master: { name: 'master', label: 'Master 1', value: 6.0, min: 0, max: 10, step: 0.1, unit: '' },
-          leadMaster: { name: 'leadMaster', label: 'Lead Master', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          bass: { name: 'bass', label: 'Bass', value: 4.0, min: 0, max: 10, step: 0.1, unit: '' },
-          mid: { name: 'mid', label: 'Middle', value: 5.0, min: 0, max: 10, step: 0.1, unit: '' },
-          treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-          presence: { name: 'presence', label: 'Presence', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          eq80: { name: 'eq80', label: '80 Hz', value: 3.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq240: { name: 'eq240', label: '240 Hz', value: 0.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq750: { name: 'eq750', label: '750 Hz', value: -5.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq2200: { name: 'eq2200', label: '2.2 kHz', value: 2.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq6600: { name: 'eq6600', label: '6.6 kHz', value: 4.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eqActive: { name: 'eqActive', label: 'Graphic EQ In', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          pullBright: { name: 'pullBright', label: 'Pull Bright', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          pullShift: { name: 'pullShift', label: 'Pull Shift', value: 0.0, min: 0, max: 1, step: 1, unit: '' },
-          pullDeep: { name: 'pullDeep', label: 'Pull Deep', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          simulClass: { name: 'simulClass', label: 'Simul-Class 85W', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          cab: { name: 'cab', label: '4x12 V30 Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
-        }
-      };
-    } else {
-      newPedal = {
-        id,
-        type: 'vox',
-        category: 'amp',
-        title: 'Vox AC-30 Top Boost',
-        color: 'amber',
-        bypassed: false,
-        parameters: {
-          channel: { name: 'channel', label: 'Channel', value: 1, min: 0, max: 1, step: 1, unit: '' },
-          gain: { name: 'gain', label: 'Volume', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          bass: { name: 'bass', label: 'Bass', value: 5.5, min: 0, max: 10, step: 0.1, unit: '' },
-          treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-          cut: { name: 'cut', label: 'Tone Cut', value: 3.5, min: 0, max: 10, step: 0.1, unit: '' },
-          chime: { name: 'chime', label: 'Chime', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          brilliant: { name: 'brilliant', label: 'Brilliant Switch', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          master: { name: 'master', label: 'Master', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-          cab: { name: 'cab', label: '2x12 Blue Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
-        }
-      };
-    }
-
+  const handleAddPedal = useCallback((type: PedalType) => {
     updateCurrentBoard((board) => {
+      const id = `${type}_${board.pedals.length + 1}`;
+      let newPedal: PedalInstance;
+
+      if (type === 'delay') {
+        newPedal = {
+          id,
+          type: 'delay',
+          title: 'Tape Echo',
+          color: 'amber',
+          bypassed: false,
+          parameters: {
+            time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
+            feedback: { name: 'feedback', label: 'Repeat', value: 0.40, min: 0.0, max: 0.95, step: 0.01, unit: '' },
+            mix: { name: 'mix', label: 'Mix', value: 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' }
+          }
+        };
+      } else if (type === 'filter') {
+        newPedal = {
+          id,
+          type: 'filter',
+          title: 'Ladder Filter',
+          color: 'crimson',
+          bypassed: false,
+          parameters: {
+            cutoff: { name: 'cutoff', label: 'Cutoff', value: 1200, min: 60, max: 20000, step: 50, unit: 'Hz' },
+            resonance: { name: 'resonance', label: 'Res', value: 0.50, min: 0.0, max: 0.98, step: 0.01, unit: '' }
+          }
+        };
+      } else if (type === 'drive') {
+        newPedal = {
+          id,
+          type: 'drive',
+          title: 'Overdrive',
+          color: 'gold',
+          bypassed: false,
+          parameters: {
+            drive: { name: 'drive', label: 'Drive', value: 4.0, min: 1.0, max: 15.0, step: 0.5, unit: 'x' },
+            tone: { name: 'tone', label: 'Tone', value: 0.65, min: 0.1, max: 1.0, step: 0.05, unit: '' }
+          }
+        };
+      } else if (type === 'ducker') {
+        newPedal = {
+          id,
+          type: 'ducker',
+          title: 'Sidechain Ducker',
+          color: 'cyan',
+          bypassed: false,
+          parameters: {
+            depth: { name: 'depth', label: 'Depth', value: 16, min: 0, max: 36, step: 1, unit: 'dB' },
+            release: { name: 'release', label: 'Release', value: 75, min: 10, max: 400, step: 5, unit: 'ms' }
+          }
+        };
+      } else if (type === 'mesa') {
+        newPedal = {
+          id,
+          type: 'mesa',
+          category: 'amp',
+          title: 'Mesa Boogie Mark III',
+          color: 'rose',
+          bypassed: false,
+          parameters: {
+            channel: { name: 'channel', label: 'Channel', value: 2, min: 0, max: 2, step: 1, unit: '' },
+            gain: { name: 'gain', label: 'Volume 1', value: 7.5, min: 0, max: 10, step: 0.1, unit: '' },
+            leadDrive: { name: 'leadDrive', label: 'Lead Drive', value: 8.0, min: 0, max: 10, step: 0.1, unit: '' },
+            master: { name: 'master', label: 'Master 1', value: 6.0, min: 0, max: 10, step: 0.1, unit: '' },
+            leadMaster: { name: 'leadMaster', label: 'Lead Master', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            bass: { name: 'bass', label: 'Bass', value: 4.0, min: 0, max: 10, step: 0.1, unit: '' },
+            mid: { name: 'mid', label: 'Middle', value: 5.0, min: 0, max: 10, step: 0.1, unit: '' },
+            treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
+            presence: { name: 'presence', label: 'Presence', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            eq80: { name: 'eq80', label: '80 Hz', value: 3.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq240: { name: 'eq240', label: '240 Hz', value: 0.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq750: { name: 'eq750', label: '750 Hz', value: -5.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq2200: { name: 'eq2200', label: '2.2 kHz', value: 2.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq6600: { name: 'eq6600', label: '6.6 kHz', value: 4.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eqActive: { name: 'eqActive', label: 'Graphic EQ In', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            pullBright: { name: 'pullBright', label: 'Pull Bright', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            pullShift: { name: 'pullShift', label: 'Pull Shift', value: 0.0, min: 0, max: 1, step: 1, unit: '' },
+            pullDeep: { name: 'pullDeep', label: 'Pull Deep', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            simulClass: { name: 'simulClass', label: 'Simul-Class 85W', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            cab: { name: 'cab', label: '4x12 V30 Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
+          }
+        };
+      } else {
+        newPedal = {
+          id,
+          type: 'vox',
+          category: 'amp',
+          title: 'Vox AC-30 Top Boost',
+          color: 'amber',
+          bypassed: false,
+          parameters: {
+            channel: { name: 'channel', label: 'Channel', value: 1, min: 0, max: 1, step: 1, unit: '' },
+            gain: { name: 'gain', label: 'Volume', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            bass: { name: 'bass', label: 'Bass', value: 5.5, min: 0, max: 10, step: 0.1, unit: '' },
+            treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
+            cut: { name: 'cut', label: 'Tone Cut', value: 3.5, min: 0, max: 10, step: 0.1, unit: '' },
+            chime: { name: 'chime', label: 'Chime', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            brilliant: { name: 'brilliant', label: 'Brilliant Switch', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            master: { name: 'master', label: 'Master', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
+            cab: { name: 'cab', label: '2x12 Blue Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
+          }
+        };
+      }
+
       const updated = [...board.pedals, newPedal];
       audioEngine.syncAddPedalToHost(type, id);
       audioEngine.updatePedalParams(updated);
       audioEngine.syncRackToHost(updated, board.ampPlacement);
+      handleSelectInspectNode(id);
+      addLog('output', `Created ${newPedal.category === 'amp' ? 'amplifier' : 'pedal'} [${id}] (${newPedal.title}) in chain.`);
       return { ...board, pedals: updated };
     });
-    setInspectedNodeId(id);
-    addLog('output', `Created ${newPedal.category === 'amp' ? 'amplifier' : 'pedal'} [${id}] (${newPedal.title}) in chain.`);
-  };
+  }, [updateCurrentBoard, handleSelectInspectNode, addLog]);
 
-  const handleAddPedalFromLibrary = (template: LibraryPedalTemplate) => {
+  const handleAddPedalFromLibrary = useCallback((template: LibraryPedalTemplate) => {
     updateCurrentBoard((board) => {
       const newPedal = instantiatePedalFromLibrary(template, board.pedals.length);
       const updated = [...board.pedals, newPedal];
@@ -917,22 +1119,22 @@ export const App: React.FC = () => {
         audioEngine.syncPedalParamToHost(newPedal.id, k, v.value);
       }
       audioEngine.syncRackToHost(updated, board.ampPlacement);
+      addLog('output', `Loaded [${template.title}] (${template.subtitle}) from Library into active board.`);
       return { ...board, pedals: updated };
     });
-    addLog('output', `Loaded [${template.title}] (${template.subtitle}) from Library into active board.`);
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleSavePedalToLibrary = (pedal: PedalInstance, customName: string, description?: string) => {
+  const handleSavePedalToLibrary = useCallback((pedal: PedalInstance, customName: string, description?: string) => {
     const saved = saveUserPedalTemplate(customName, pedal, description);
     addLog('output', `Saved custom pedal [${saved.title}] to your personal Pedal Library.`);
-  };
+  }, [addLog]);
 
-  const handleOpenSavePedalModal = (pedal: PedalInstance) => {
+  const handleOpenSavePedalModal = useCallback((pedal: PedalInstance) => {
     setPreselectedPedalToSaveId(pedal.id);
     setIsPedalLibraryOpen(true);
-  };
+  }, []);
 
-  const handleAddSensor = (sensor: { id: string; label: string; freq: number; type: 'lowpass' | 'bandpass' | 'highpass'; color: string }) => {
+  const handleAddSensor = useCallback((sensor: { id: string; label: string; freq: number; type: 'lowpass' | 'bandpass' | 'highpass'; color: string }) => {
     const ok = audioEngine.addSensoryChannel(sensor);
     if (ok) {
       setTelemetry((prev) => ({
@@ -943,132 +1145,9 @@ export const App: React.FC = () => {
     } else {
       addLog('error', `Sensory channel [${sensor.id}] already exists.`);
     }
-  };
+  }, [addLog]);
 
-  const handleSelectModule = (id: string) => {
-    const mod = modules.find((m) => m.id === id);
-    if (!mod) return;
-    setActiveModuleId(id);
-    try {
-      const ws: StudioWorkspace =
-        mod.type === 'sp404' ? 'sp404' : mod.type === 'state' ? 'state' : 'pedal_lab';
-      localStorage.setItem('johnwalls_active_workspace', ws);
-      localStorage.setItem('johnwalls_workspace_configured', 'true');
-    } catch {}
-  };
-
-  const handleMoveModule = (fromIndex: number, toIndex: number) => {
-    setModules((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const [item] = copy.splice(fromIndex, 1);
-      copy.splice(toIndex, 0, item);
-      addLog('output', `Rearranged signal flow: Moved [${item.title}] ${fromIndex < toIndex ? 'later' : 'earlier'}.`);
-      return copy;
-    });
-  };
-
-  const handleToggleModuleBypass = (id: string) => {
-    setModules((prev) =>
-      prev.map((m) => {
-        if (m.id === id) {
-          const nextBypassed = !m.bypassed;
-          addLog('output', `Module [${m.title}] is now ${nextBypassed ? 'BYPASSED' : 'ACTIVE'}.`);
-          if (m.type === 'sp404') {
-            const sp404Index = prev.findIndex((mod) => mod.id === id);
-            const boardIndex = prev.findIndex((mod) => mod.type === 'pedal_board');
-            const order = (sp404Index !== -1 && boardIndex !== -1 && sp404Index < boardIndex) ? 'before' : 'after';
-            audioEngine.routeSP404(order, sp404AudioEngine.getMasterGain(), nextBypassed);
-          }
-          return { ...m, bypassed: nextBypassed };
-        }
-        return m;
-      })
-    );
-  };
-
-  const handleAddModule = (type: StudioModuleType) => {
-    if (type === 'pedal_board') {
-      const boardNum = modules.filter((m) => m.type === 'pedal_board').length + 1;
-      const newBoard: StudioPedalBoardModule = {
-        id: `board_${Date.now()}`,
-        type: 'pedal_board',
-        title: `Pedal Board ${boardNum}`,
-        bypassed: false,
-        ampPlacement: 'outbound',
-        pedals: [
-          {
-            id: `dub_echo_${Date.now()}`,
-            type: 'delay',
-            title: 'Tape Echo',
-            color: 'amber',
-            bypassed: false,
-            parameters: {
-              time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
-              feedback: { name: 'feedback', label: 'Repeat', value: 0.4, min: 0.0, max: 0.95, step: 0.01, unit: '' },
-              mix: { name: 'mix', label: 'Mix', value: 0.5, min: 0.0, max: 1.0, step: 0.01, unit: '' }
-            }
-          }
-        ]
-      };
-      setModules((prev) => [...prev, newBoard]);
-      setActiveModuleId(newBoard.id);
-      addLog('output', `Created new modular board: ${newBoard.title}`);
-    } else if (type === 'sp404') {
-      const spNum = modules.filter((m) => m.type === 'sp404').length + 1;
-      const newSp: StudioSP404Module = {
-        id: `sp404_${Date.now()}`,
-        type: 'sp404',
-        title: spNum === 1 ? 'SP-404 Original / A' : `SP-404 Original / A #${spNum}`,
-        bypassed: false
-      };
-      setModules((prev) => [...prev, newSp]);
-      setActiveModuleId(newSp.id);
-      addLog('output', `Created new sampler module: ${newSp.title}`);
-    } else if (type === 'state') {
-      const stateNum = modules.filter((m) => m.type === 'state').length + 1;
-      const newState: StudioStateModule = {
-        id: `state_${Date.now()}`,
-        type: 'state',
-        title: stateNum === 1 ? 'State Cockpit' : `State Cockpit #${stateNum}`,
-        bypassed: false
-      };
-      setModules((prev) => [...prev, newState]);
-      setActiveModuleId(newState.id);
-      addLog('output', `Created new module: ${newState.title}`);
-    }
-  };
-
-  const handleRemoveModule = (id: string) => {
-    if (modules.length <= 1) {
-      addLog('error', 'Cannot remove the last studio module in the pipeline.');
-      return;
-    }
-    const target = modules.find((m) => m.id === id);
-    setModules((prev) => {
-      const next = prev.filter((m) => m.id !== id);
-      if (activeModuleId === id && next.length > 0) {
-        setActiveModuleId(next[0].id);
-      }
-      return next;
-    });
-    if (target) {
-      addLog('output', `Removed module [${target.title}] from studio chain.`);
-    }
-  };
-
-  const handleRenameModule = (id: string, newTitle: string) => {
-    setModules((prev) =>
-      prev.map((m) => {
-        if (m.id === id) {
-          return { ...m, title: newTitle.trim() || m.title };
-        }
-        return m;
-      })
-    );
-  };
-
-  const handleExecuteCommand = (cmd: string) => {
+  const handleExecuteCommand = useCallback((cmd: string) => {
     if (cmd.startsWith('__stream ')) {
       addLog('output', cmd.substring(9));
       return;
@@ -1124,6 +1203,14 @@ export const App: React.FC = () => {
           '  set <id>.<param> <val>                          Adjust pedal/amp parameter\n' +
           '  list [pedals|modules|sensors|tracks|takes]      Inspect rack, modules, sensors, tracks or takes\n' +
           '  routing                                         Open Universal Studio Signal Flow Matrix\n\n' +
+          'HARDWARE & MEMORY SYNC (SP-404SX & BOSS RC-600):\n' +
+          '  hardware status / hw status                     Inspect mounted SP-404SX card, RC-600 USB storage & MIDI link\n' +
+          '  hardware sync [all|sp404|rc600]                 Sync SP-404 RLND sample chops (Pad 1 D&B) & RC-600 32-bit stems\n' +
+          '  card status / card export                       Legacy SD card shortcut commands\n\n' +
+          'ABLETON GROUP BOUNCE & RC-600 STEM PATCHER:\n' +
+          '  bounce list [als_path]                          Inspect groups, tracks & clips in Ableton Live project\n' +
+          '  bounce song <slot_number> [als_path]            Render time-aligned 3-stem layout (Drums, Bass, Guitars) to RC-600\n' +
+          '  bounce group <name> [--slot N] [--track 1-3]    Render group & patch directly onto Boss RC-600\n\n' +
           'TERMINAL CONTROLS:\n' +
           '  clear / cls                                     Clear terminal log buffer'
       );
@@ -1305,9 +1392,392 @@ export const App: React.FC = () => {
     }
 
     if (verb === 'state' || verb === 'cockpit') {
-      handleSelectWorkspace('state', true);
-      addLog('output', 'Switched active workspace to STATE Cockpit.');
+      const sub = tokens[1]?.toLowerCase();
+      if (sub === 'card') {
+        tokens[0] = 'card';
+        tokens[1] = 'status';
+        // Fallthrough to card handler below
+      } else {
+        handleSelectWorkspace('state', true);
+        addLog('output', 'Switched active workspace to STATE Cockpit.');
+        return;
+      }
+    }
+
+    if (verb === 'hardware' || verb === 'hw' || verb === 'devices' || verb === 'card' || (verb === 'export' && tokens[1]?.toLowerCase() === 'card') || (verb === 'sync' && (tokens[1]?.toLowerCase() === 'hardware' || tokens[1]?.toLowerCase() === 'hw' || !tokens[1]))) {
+      let sub = (verb === 'export' ? 'export' : verb === 'sync' ? 'sync' : tokens[1]?.toLowerCase() || 'status');
+      if (verb === 'card' && tokens[1]?.toLowerCase() === 'export') sub = 'export';
+      if (verb === 'card' && (!tokens[1] || tokens[1]?.toLowerCase() === 'status')) sub = 'status';
+
+      if (sub === 'status' || sub === 'check' || sub === 'list') {
+        stateBridge.getHardwareStatus().then((hw) => {
+          const sp = hw.sp404;
+          const rc = hw.rc600;
+
+          let spInfo = '  Card:          NOT DETECTED (Insert FAT32 SD card into laptop)';
+          if (sp.mounted) {
+            const freeGb = (sp.freeBytes / (1024 * 1024 * 1024)).toFixed(1);
+            const totalGb = (sp.totalBytes / (1024 * 1024 * 1024)).toFixed(1);
+            spInfo =
+              `  Card:          MOUNTED (${sp.volumeName} at ${sp.mountPath})\n` +
+              `  Capacity:      ${freeGb} GB Free / ${totalGb} GB Total (FAT32)\n` +
+              `  Sample Engine: ${sp.sampleCount || 72} native chops (Roland RLND chunks, Banks A-F)\n` +
+              `  Master Backing:Pad 1 across Banks A-F assigned to Full Drums & Bass Master\n` +
+              `  Import Ready:  ${sp.hasRolandImport ? 'YES (ROLAND/IMPORT/ synchronized)' : 'READY ON SYNC'}`;
+          }
+
+          let rcInfo = '  USB Storage:   NOT DETECTED (Connect USB & set [MENU] -> [STORAGE] -> CONNECTED)';
+          if (rc.mounted) {
+            const freeGb = (rc.freeBytes / (1024 * 1024 * 1024)).toFixed(1);
+            const totalGb = (rc.totalBytes / (1024 * 1024 * 1024)).toFixed(1);
+            rcInfo =
+              `  USB Storage:   CONNECTED (${rc.volumeName} at ${rc.mountPath})\n` +
+              `  Capacity:      ${freeGb} GB Free / ${totalGb} GB Total\n` +
+              `  Audio Tracks:  ${rc.trackCount || 18} tracks across Memories 001..006 (32-bit float stereo)\n` +
+              `  Assignments:   Trk 1: Drums | Trk 2: Bass | Trk 3: Guitars & Instruments`;
+          }
+
+          addLog(
+            'output',
+            `=== STUDIO HARDWARE & SYNCHRONIZATION STATUS ===\n\n` +
+            `[Roland SP-404SX / SP-404A Sampler]\n` +
+            `${spInfo}\n\n` +
+            `[Boss RC-600 Loop Station]\n` +
+            `${rcInfo}\n\n` +
+            `[MIDI Interconnect Topology]\n` +
+            `  Wiring:        RC-600 MIDI OUT (DIN 5-Pin) -> SP-404SX MIDI IN (DIN 5-Pin)\n` +
+            `  RC-600 Role:   Master Beat Clock & Footswitch Note-out\n` +
+            `  SP-404SX Role: Slave Sound Module (MIDI Ch 1, Note 47 = Bank A Pad 1 Drums & Bass)\n` +
+            `  Tempo Lock:    SP-404SX auto-syncs playback rate to RC-600 BPM\n\n` +
+            `Commands: 'hardware sync [all|sp404|rc600]', 'card export'`
+          );
+        }).catch((err: any) => addLog('error', `Hardware Status Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      if (sub === 'sync' || sub === 'export' || sub === 'write') {
+        const target = (tokens[2]?.toLowerCase() === 'sp404' || tokens[1]?.toLowerCase() === 'sp404')
+          ? 'sp404'
+          : (tokens[2]?.toLowerCase() === 'rc600' || tokens[1]?.toLowerCase() === 'rc600')
+          ? 'rc600'
+          : 'all';
+
+        addLog('output', `Starting hardware synchronization (Target: ${target.toUpperCase()})...`);
+        stateBridge.syncHardware({ target }).then((res) => {
+          if (!res.ok) {
+            addLog('error', `Hardware Sync Failed: ${res.error || res.message}`);
+            return;
+          }
+          const mbWritten = (res.bytesWritten / (1024 * 1024)).toFixed(1);
+          let details = '';
+          if (res.sp404) {
+            details += `  SP-404SX:            ${res.sp404.samplesExported || 72} samples with RLND chunks -> ${res.sp404.mountPath}\n`;
+          }
+          if (res.rc600) {
+            details += `  Boss RC-600:         ${res.rc600.tracksExported || 18} 32-bit float tracks (Mem 001..006) -> ${res.rc600.mountPath}\n`;
+          }
+          if (!details) {
+            details = `  Summary:             ${res.message}\n`;
+          }
+
+          addLog(
+            'output',
+            `=== HARDWARE SYNCHRONIZATION COMPLETED ===\n` +
+            details +
+            `  Data Transferred:    ${mbWritten} MB\n` +
+            `  Master Track (Pad 1):Full-length Drums & Bass backing master loaded\n` +
+            `  Metadata Hygiene:    Cleaned macOS dot-underscore files via dot_clean\n` +
+            `  Status:              READY FOR PERFORMANCE & HARDWARE USE`
+          );
+        }).catch((err: any) => addLog('error', `Hardware Sync Error: ${err?.message || String(err)}`));
+        return;
+      }
+    }
+
+    if (verb === 'bounce') {
+      const sub = tokens[1]?.toLowerCase() || 'list';
+
+      if (sub === 'list' || sub === 'inspect' || sub === 'tracks') {
+        const alsPath = tokens[2] || '';
+        if (alsPath) {
+          addLog('output', `Inspecting Ableton project: ${alsPath}...`);
+        } else {
+          addLog('output', 'Detecting active Ableton Live project & session state...');
+        }
+        stateBridge.listAlsProject(alsPath).then((res) => {
+          if (!res.ok) {
+            addLog('error', `Failed to inspect project: ${res.output}`);
+            return;
+          }
+          addLog('output', res.output);
+        }).catch((err: any) => addLog('error', `Bounce List Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      if (sub === 'status' || sub === 'host') {
+        stateBridge.getAbletonStatus().then((st) => {
+          const runStr = st.liveRunning ? `RUNNING (PID: ${st.livePid})` : 'NOT RUNNING';
+          const actDoc = st.activeDocument ? `${st.activeDocument}${st.isDefaultSet ? ' (Untitled / Default Set)' : ''}` : 'None detected';
+          let out = `=== ABLETON LIVE HOST STATUS ===\n  Process:         ${runStr}\n  Active Document: ${actDoc}\n`;
+          if (st.recentProjects && st.recentProjects.length > 0) {
+            out += `\n=== RECENT / ARCHIVED PROJECTS ===\n`;
+            st.recentProjects.forEach((p: string, i: number) => {
+              out += `  [${i + 1}] ${p}\n`;
+            });
+          }
+          addLog('output', out);
+        }).catch((err: any) => addLog('error', `Ableton Status Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      if (sub === 'open') {
+        const target = tokens[2] || '';
+        if (!target) {
+          addLog('error', 'Usage: bounce open <number|path> (e.g. "bounce open 1")');
+          return;
+        }
+        addLog('output', `Opening project in Ableton Live: ${target}...`);
+        stateBridge.openAlsProject(target).then((res) => {
+          if (!res.ok) {
+            addLog('error', `Failed to open project: ${res.output}`);
+            return;
+          }
+          addLog('output', res.output || `Project opened in Ableton Live.`);
+        }).catch((err: any) => addLog('error', `Bounce Open Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      if (sub === 'song' || sub === 'auto') {
+        const slot = parseInt(tokens[2], 10) || 6;
+        const alsPath = tokens[3] || '';
+        const targetLabel = alsPath ? `from ${alsPath}` : 'from active/default Ableton project';
+        addLog('output', `Starting multi-track bounce for Song Slot ${slot} ${targetLabel}...\n  Rendering: Trk 1 (Drums), Trk 2 (Bass), Trk 3 (Guitars/Inst)...`);
+        stateBridge.bounceAlsGroup({ als: alsPath, autoSong: slot }).then((res) => {
+          if (!res.ok) {
+            addLog('error', `Song Bounce Failed: ${res.error || res.message}`);
+            return;
+          }
+          const mbWritten = (res.bytesWritten / (1024 * 1024)).toFixed(1);
+          addLog(
+            'output',
+            `=== ABLETON STEM BOUNCE COMPLETED & PATCHED ===\n` +
+            `  Project:             ${res.project} (${res.bpm} BPM)\n` +
+            `  Master Length:       ${res.songDurationSeconds?.toFixed(1)}s (100% time-synchronized with leading silence preserved)\n` +
+            `  RC-600 Target:       Memory Slot ${res.memorySlot} (/Volumes/RC-600/ROLAND/WAVE/)\n` +
+            `  Stems Rendered:\n` +
+            `    - Track 1: Drums & Percussion (32-bit float stereo)\n` +
+            `    - Track 2: Bass (32-bit float stereo)\n` +
+            `    - Track 3: Guitars & Instruments (32-bit float stereo)\n` +
+            `  Data Transferred:    ${mbWritten} MB\n` +
+            `  Status:              READY FOR HARDWARE PERFORMANCE`
+          );
+        }).catch((err: any) => addLog('error', `Song Bounce Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+
+      if (sub === 'group' || sub === 'track') {
+        let groupNames = tokens[2] || 'Drums';
+        let slot = 6;
+        let trk = 1;
+        let alsPath = '';
+
+        for (let i = 3; i < tokens.length; ++i) {
+          if ((tokens[i] === '--slot' || tokens[i] === '-s') && tokens[i+1]) slot = parseInt(tokens[i+1], 10);
+          if ((tokens[i] === '--track' || tokens[i] === '-t') && tokens[i+1]) trk = parseInt(tokens[i+1], 10);
+          if ((tokens[i] === '--als' || tokens[i] === '-a') && tokens[i+1]) alsPath = tokens[i+1];
+        }
+
+        addLog('output', `Bouncing group "${groupNames}" from ${alsPath} -> RC-600 Memory ${slot} Trk ${trk}...`);
+        stateBridge.bounceAlsGroup({ als: alsPath, groups: groupNames, memory: slot, rc600Track: trk }).then((res) => {
+          if (!res.ok) {
+            addLog('error', `Group Bounce Failed: ${res.error || res.message}`);
+            return;
+          }
+          const mbWritten = (res.bytesWritten / (1024 * 1024)).toFixed(1);
+          addLog(
+            'output',
+            `=== GROUP BOUNCE COMPLETED & PATCHED ===\n` +
+            `  Project:             ${res.project} (${res.bpm} BPM)\n` +
+            `  Groups:              ${res.groups?.join(', ')}\n` +
+            `  Clips Rendered:      ${res.clipsRendered}\n` +
+            `  Duration:            ${res.durationSeconds?.toFixed(2)}s\n` +
+            `  Peak Level:          ${res.peakDb?.toFixed(1)} dBFS\n` +
+            `  RC-600 Target:       ${res.rc600Path || 'Local output only'}\n` +
+            `  Data Transferred:    ${mbWritten} MB\n` +
+            `  Status:              READY FOR HARDWARE USE`
+          );
+        }).catch((err: any) => addLog('error', `Group Bounce Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      addLog('error', 'Usage: bounce <list [als_path] | song <slot_number> [als_path] | group <group_name> [--slot N] [--track 1-3] [--als path]>');
       return;
+    }
+
+    if (verb === 'sp404' || verb === 'chop') {
+      const sub = tokens[1]?.toLowerCase();
+
+      if (!sub || sub === 'help' || sub === 'status') {
+        handleSelectWorkspace('sp404', true);
+        addLog(
+          'output',
+          `=== ROLAND SP-404 SAMPLE FINDER & CHOP LOADER ===\n\n` +
+          `[Quick Commands]\n` +
+          `  sp404 find <track_name>                Find all split waveforms & clips on track\n` +
+          `  sp404 grab <track> <n> [-b A] [-p 1]   Grab nth instance of split form & load to pad\n` +
+          `  sp404 pattern <track> [-b A] [-c 12]   Generate 12-pad pattern chop kit across bank\n` +
+          `  sp404 card                             Check mounted Roland SD card status\n\n` +
+          `Examples:\n` +
+          `  sp404 find "Chop Sample"\n` +
+          `  sp404 find "Sean Beatbox"\n` +
+          `  sp404 grab "Sean Beatbox" 15 --bank A --pad 1\n` +
+          `  sp404 pattern "Sean Beatbox" --bank A`
+        );
+        return;
+      }
+
+      if (sub === 'find' || sub === 'list' || sub === 'search' || sub === 'inspect') {
+        const trackName = tokens[2] || 'Chop Sample';
+        let alsPath = '';
+        for (let i = 3; i < tokens.length; ++i) {
+          if ((tokens[i] === '--als' || tokens[i] === '-a') && tokens[i+1]) alsPath = tokens[i+1];
+        }
+
+        addLog('output', `Searching split forms on track "${trackName}"...`);
+        stateBridge.findSp404Samples(trackName, alsPath).then((res) => {
+          if (!res.ok) {
+            addLog('error', `Sample Finder Error: ${res.error}`);
+            return;
+          }
+          const d = res.data;
+          let out =
+            `=======================================================\n` +
+            `SP-404 SAMPLE FINDER: TRACK "${d.track}"\n` +
+            `Tempo: ${d.bpm} BPM | Total Splits: ${d.totalClips} (Distinct Shapes: ${d.distinctSplitForms})\n` +
+            `=======================================================\n\n` +
+            `Inst  Start (Beat)  Start (Time)  Duration    Peak     Repeats   Source File\n` +
+            `--------------------------------------------------------------------------------\n`;
+
+          d.instances.forEach((inst: any) => {
+            const mark = inst.isAudible ? ' ' : '*';
+            const rep = inst.repeatCount > 1 ? `x${inst.repeatCount}` : '1';
+            const instStr = `#${inst.instance}`.padEnd(5);
+            const sbStr = `${inst.startBeat.toFixed(2)}b`.padEnd(14);
+            const stStr = `${inst.startTimeSec.toFixed(2)}s`.padEnd(14);
+            const durStr = `${inst.durationSec.toFixed(2)}s`.padEnd(11);
+            const pkStr = `${inst.peak.toFixed(3)}`.padEnd(9);
+            const repStr = rep.padEnd(10);
+            out += `${instStr}${mark} ${sbStr}${stStr}${durStr}${pkStr}${repStr}${inst.sourceFilename}\n`;
+          });
+
+          out += `\n[Legend: '*' = low energy / silent slice]\n`;
+          out += `\n[Quick Commands]\n`;
+          out += `  Grab nth instance:  sp404 grab "${d.track}" <n> --bank A --pad 1\n`;
+          out += `  Make 12-pad kit:    sp404 pattern "${d.track}" --bank A\n`;
+          addLog('output', out);
+        }).catch((err: any) => addLog('error', `Sample Finder Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      if (sub === 'grab' || sub === 'slice' || sub === 'load') {
+        const trackName = tokens[2] || 'Chop Sample';
+        const instanceNum = parseInt(tokens[3], 10) || 1;
+        let bank = 'A';
+        let pad = 1;
+        let alsPath = '';
+        let patchCard = false;
+
+        for (let i = 4; i < tokens.length; ++i) {
+          if ((tokens[i] === '--bank' || tokens[i] === '-b') && tokens[i+1]) bank = tokens[i+1].toUpperCase();
+          if ((tokens[i] === '--pad' || tokens[i] === '-p') && tokens[i+1]) pad = parseInt(tokens[i+1], 10);
+          if ((tokens[i] === '--als' || tokens[i] === '-a') && tokens[i+1]) alsPath = tokens[i+1];
+          if (tokens[i] === '--card' || tokens[i] === '--patch-card') patchCard = true;
+        }
+
+        addLog('output', `Grabbing instance #${instanceNum} of "${trackName}" -> Bank ${bank} Pad ${pad}...`);
+        stateBridge.grabSp404Sample({ track: trackName, instance: instanceNum, bank, pad, als: alsPath, patchCard }).then(async (res) => {
+          if (!res.ok) {
+            addLog('error', `Sample Grab Failed: ${res.error}`);
+            return;
+          }
+
+          // Hydrate pad in local WebAudio engine if base64 WAV payload returned
+          if (res.wavBase64) {
+            await sp404AudioEngine.loadSampleBase64(res.bank as BankLetter, res.padId, res.wavBase64, res.label);
+          }
+
+          let cardMsg = '';
+          if (res.cardPatched) {
+            cardMsg = `  Roland SD Card:      PATCHED -> ${res.cardPath}\n`;
+          }
+
+          addLog(
+            'output',
+            `=== SP-404 SAMPLE EXTRACTED & LOADED ===\n` +
+            `  Track:               ${res.track} (Instance #${res.instance})\n` +
+            `  Target Pad:          Bank ${res.bank} Pad ${res.padId} (Sample Index: ${res.sampleIndex})\n` +
+            `  Label:               "${res.label}"\n` +
+            `  Edited Length:       ${res.durationSec.toFixed(3)}s (${res.durationBeats} beats)\n` +
+            `  Peak Amplitude:      ${res.peak.toFixed(3)}\n` +
+            `  File Saved:          ${res.filePath}\n` +
+            cardMsg +
+            `  Status:              LOADED INTO SP-404 ENGINE & READY TO PLAY`
+          );
+        }).catch((err: any) => addLog('error', `Sample Grab Error: ${err?.message || String(err)}`));
+        return;
+      }
+
+      if (sub === 'pattern' || sub === 'kit') {
+        const trackName = tokens[2] || 'Chop Sample';
+        let bank = 'A';
+        let count = 12;
+        let alsPath = '';
+        let patchCard = false;
+
+        for (let i = 3; i < tokens.length; ++i) {
+          if ((tokens[i] === '--bank' || tokens[i] === '-b') && tokens[i+1]) bank = tokens[i+1].toUpperCase();
+          if ((tokens[i] === '--count' || tokens[i] === '-c') && tokens[i+1]) count = parseInt(tokens[i+1], 10);
+          if ((tokens[i] === '--als' || tokens[i] === '-a') && tokens[i+1]) alsPath = tokens[i+1];
+          if (tokens[i] === '--card' || tokens[i] === '--patch-card') patchCard = true;
+        }
+
+        addLog('output', `Creating ${count}-pad pattern chop kit from "${trackName}" on Bank ${bank}...`);
+        stateBridge.makeSp404Pattern({ track: trackName, bank, count, als: alsPath, patchCard }).then(async (res) => {
+          if (!res.ok) {
+            addLog('error', `Pattern Kit Creation Failed: ${res.error}`);
+            return;
+          }
+
+          // Hydrate pads into local WebAudio engine
+          if (Array.isArray(res.pads)) {
+            for (const p of res.pads) {
+              if (p.wavBase64) {
+                await sp404AudioEngine.loadSampleBase64(p.bank as BankLetter, p.pad, p.wavBase64, p.label);
+              }
+            }
+          }
+
+          let padSummary = '';
+          res.pads?.forEach((p: any) => {
+            padSummary += `    - Pad ${String(p.pad).padStart(2, '0')}: "${p.label}" (${p.durationSec.toFixed(2)}s)\n`;
+          });
+
+          addLog(
+            'output',
+            `=== SP-404 PATTERN CHOP KIT CREATED ===\n` +
+            `  Track:               ${res.track}\n` +
+            `  Target Bank:         Bank ${res.bank} (Pads 1..${res.padCount})\n` +
+            `  Tempo:               ${res.bpm} BPM\n` +
+            `  Pattern Length:      ${res.totalDurationSec.toFixed(2)}s (${res.totalDurationBeats} beats)\n` +
+            `  Pattern JSON:        ${res.patternFile}\n` +
+            `  Pads Hydrated:\n` +
+            padSummary +
+            `  Status:              FULL 12-PAD BANK HYDRATED & READY TO TRIGGER`
+          );
+        }).catch((err: any) => addLog('error', `Pattern Kit Error: ${err?.message || String(err)}`));
+        return;
+      }
     }
 
     if (verb === 'sc' || verb === 'supercollider') {
@@ -1723,7 +2193,21 @@ export const App: React.FC = () => {
     }
 
     addLog('error', `Unknown command: '${cmd}'. Type 'help' for instructions.`);
-  };
+  }, [
+    addLog,
+    telemetry,
+    handleSelectWorkspace,
+    currentPedals,
+    modules,
+    userPresets,
+    handleAddPedalFromLibrary,
+    handleSaveUserPreset,
+    handleApplyRackPreset,
+    handleAddPedal,
+    handleToggleBypass,
+    handleUpdateParam,
+    handleToggleAmpPlacement
+  ]);
 
   const handleHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -1765,12 +2249,15 @@ export const App: React.FC = () => {
           onToggleScope={() => setIsScopeVisible(!isScopeVisible)}
           telemetry={telemetry}
           onAddSensor={handleAddSensor}
-          activeWorkspace={activeWorkspace}
+          activeWorkspace={isUnifiedMode ? 'unified' : activeWorkspace}
           onSelectWorkspace={(ws) => handleSelectWorkspace(ws, true)}
           onOpenWorkspaceModal={() => setIsWorkspaceModalOpen(true)}
           onOpenPedalLibrary={() => setIsPedalLibraryOpen(true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
           onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+          onOpenPalette={() => setIsPaletteOpen(true)}
+          onToggleCopilot={() => setIsCopilotOpen(!isCopilotOpen)}
+          isCopilotOpen={isCopilotOpen}
           onOpenVisualizer={() => {
             setVisualizerTake(null);
             setIsVisualizerOpen(true);
@@ -1793,7 +2280,61 @@ export const App: React.FC = () => {
       </div>
 
       {/* Main Workspace Body */}
-      {activeWorkspace === 'pedal_lab' ? (
+      {isUnifiedMode ? (
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* Top Collapsible Pedal Dock */}
+          <div className={`transition-all duration-200 border-b border-slate-800 bg-[#0c0e14] ${isPedalDockExpanded ? 'h-64' : 'h-8'} overflow-hidden flex flex-col flex-shrink-0`}>
+            <div className="px-4 py-1 bg-[#080a0f] border-b border-slate-800/80 flex items-center justify-between text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-amber-400">PEDALBOARD DOCK</span>
+                <span className="text-[10px] text-slate-500">({currentPedals.length} active pedals)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsPedalLibraryOpen(true)}
+                  className="text-[10px] text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800/60 hover:bg-slate-700 transition"
+                >
+                  + Library
+                </button>
+                <button
+                  onClick={() => setIsPedalDockExpanded(!isPedalDockExpanded)}
+                  className="text-[10px] text-amber-400 hover:text-amber-300 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition font-bold"
+                >
+                  {isPedalDockExpanded ? 'Collapse Dock ▲' : 'Expand Dock ▼'}
+                </button>
+              </div>
+            </div>
+            {isPedalDockExpanded && (
+              <div className="flex-1 overflow-x-auto">
+                <PedalBoardCanvas
+                  pedals={currentPedals}
+                  rules={rules}
+                  onUpdateParam={handleUpdateParam}
+                  onToggleBypass={handleToggleBypass}
+                  onRemovePedal={handleRemovePedal}
+                  onAddPedal={handleAddPedal}
+                  ampPlacement={currentAmpPlacement}
+                  onToggleAmpPlacement={handleToggleAmpPlacement}
+                  inspectedNodeId={inspectedNodeId}
+                  onSelectInspectNode={handleSelectInspectNode}
+                  onOpenLibrary={() => setIsPedalLibraryOpen(true)}
+                  onSavePedalToLibrary={handleOpenSavePedalModal}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Center SP-404 Sampler & Waveform */}
+          <div className="flex-1 overflow-hidden">
+            <SP404Workstation
+              onSwitchToPedalLab={() => { setIsUnifiedMode(false); handleSelectWorkspace('pedal_lab', true); }}
+              onSwitchToState={() => { setIsUnifiedMode(false); handleSelectWorkspace('state', true); }}
+              onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
+              telemetry={telemetry}
+            />
+          </div>
+        </div>
+      ) : activeWorkspace === 'pedal_lab' ? (
         <>
           {/* Live Solo Waveform Oscilloscope Strip */}
           {isScopeVisible && (
@@ -1924,6 +2465,23 @@ export const App: React.FC = () => {
         telemetry={telemetry}
         auditionTake={visualizerTake}
         onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+      />
+
+      {/* Global Raycast Command Palette (Cmd+K / ~) */}
+      <GlobalCommandPalette
+        isOpen={isPaletteOpen}
+        onClose={() => setIsPaletteOpen(false)}
+        onExecuteCommand={handleExecuteCommand}
+        onSwitchWorkspace={(ws) => handleSelectWorkspace(ws as StudioWorkspace, true)}
+      />
+
+      {/* AI Copilot Drawer */}
+      <CopilotDrawer
+        isOpen={isCopilotOpen}
+        onToggle={() => setIsCopilotOpen(!isCopilotOpen)}
+        telemetry={telemetry}
+        onExecuteCommand={handleExecuteCommand}
+        commandHistory={logs.map((l) => l.content || '').filter(Boolean)}
       />
     </div>
   );

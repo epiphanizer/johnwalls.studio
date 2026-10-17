@@ -30,7 +30,7 @@ interface StudioModuleFlowRibbonProps {
   onOpenCaptureDispatch?: () => void;
 }
 
-export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = ({
+export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = React.memo(({
   modules,
   activeModuleId,
   onSelectModule,
@@ -339,4 +339,4 @@ export const StudioModuleFlowRibbon: React.FC<StudioModuleFlowRibbonProps> = ({
       </div>
     </div>
   );
-};
+});

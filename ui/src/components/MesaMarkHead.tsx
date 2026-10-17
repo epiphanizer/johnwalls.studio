@@ -14,7 +14,7 @@ interface MesaMarkHeadProps {
   onSaveToLibrary?: (amp: PedalInstance) => void;
 }
 
-export const MesaMarkHead: React.FC<MesaMarkHeadProps> = ({
+export const MesaMarkHead: React.FC<MesaMarkHeadProps> = React.memo(({
   amp,
   onUpdateParam,
   onToggleBypass,
@@ -442,4 +442,4 @@ export const MesaMarkHead: React.FC<MesaMarkHeadProps> = ({
       </div>
     </div>
   );
-};
+});

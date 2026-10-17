@@ -14,10 +14,15 @@ import {
   Trash2,
   Volume2,
   GitBranch,
-  Activity
+  Activity,
+  Lock,
+  Edit2,
+  Check,
+  Scissors
 } from 'lucide-react';
 import { AudioKnob } from './AudioKnob';
 import { StateTelemetry } from '../types';
+import { stateBridge } from '../utils/stateBridge';
 import {
   sp404AudioEngine,
   BankLetter,
@@ -29,6 +34,8 @@ import {
 import {
   SP404_LEGACY_PROFILE,
   SP404_LEGACY_PROFILES,
+  WALLS_DEVINE_VOL1_ID,
+  getWallsDevineVol1Manifest,
   type SP404HardwareProfileId,
   type SP404LibraryManifest
 } from '../utils/sp404Library';
@@ -52,25 +59,26 @@ const PAD_SUB_LABELS = [
   'BEND -', 'BEND +', 'ROLL', 'MARK'
 ];
 
-export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
+const SP404WorkstationComponent: React.FC<SP404WorkstationProps> = ({
   onSwitchToPedalLab,
   onSwitchToState,
   onOpenRoutingModal,
   telemetry
 }) => {
   const [activeBank, setActiveBank] = useState<BankLetter>('A');
-  const [activeEffect, setActiveEffect] = useState<MFXType>('vinyl');
+  const [activeEffect, setActiveEffect] = useState<MFXType>('isolator');
   const [isVinyl33Rpm, setIsVinyl33Rpm] = useState<boolean>(true);
 
   // Rotary knobs state
   const [volume, setVolume] = useState<number>(8.5);
-  const [ctrl1, setCtrl1] = useState<number>(6.5);
-  const [ctrl2, setCtrl2] = useState<number>(4.0);
-  const [ctrl3, setCtrl3] = useState<number>(8.0);
+  const [ctrl1, setCtrl1] = useState<number>(5.0);
+  const [ctrl2, setCtrl2] = useState<number>(0.0);
+  const [ctrl3, setCtrl3] = useState<number>(5.0);
 
   // Global Transpose & Chromatic Mode
   const [globalTranspose, setGlobalTranspose] = useState<number>(0);
   const [isChromaticMode, setIsChromaticMode] = useState<boolean>(false);
+  const [isHoldMode, setIsHoldMode] = useState<boolean>(() => sp404AudioEngine.getIsHoldMode());
   const [chromaticOctave] = useState<number>(3); // Base octave C3
   const [selectedPadId, setSelectedPadId] = useState<number>(1);
 
@@ -84,14 +92,30 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
   const [cardStatusMessage, setCardStatusMessage] = useState<string>('LEGACY CARD WORKFLOW · 120 SLOTS');
   const [hardwareProfileId, setHardwareProfileId] = useState<SP404HardwareProfileId>(SP404_LEGACY_PROFILE.id);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [libraryName, setLibraryName] = useState<string>('Untitled SP-404 Set');
+  const [libraryName, setLibraryName] = useState<string>('Walls:Devine Vol. 1');
   const [libraries, setLibraries] = useState<SP404LibraryManifest[]>([]);
-  const [selectedLibraryId, setSelectedLibraryId] = useState<string>('');
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string>(WALLS_DEVINE_VOL1_ID);
   const [nativeStateReady, setNativeStateReady] = useState<boolean>(() => !hasJuceNativeHost());
   const [transferProgress, setTransferProgress] = useState<SP404TransferProgress | null>(null);
 
   // Edit Pad Details Drawer
   const [editingPad, setEditingPad] = useState<SP404Pad | null>(null);
+
+  // Inline Pad & OLED Sample Renaming States
+  const [inlineEditingPadId, setInlineEditingPadId] = useState<number | null>(null);
+  const [inlinePadName, setInlinePadName] = useState<string>('');
+  const [isEditingOledLabel, setIsEditingOledLabel] = useState<boolean>(false);
+  const [oledLabelDraft, setOledLabelDraft] = useState<string>('');
+
+  // Sample Finder & Split Waveform Chop Loader State
+  const [isChopFinderOpen, setIsChopFinderOpen] = useState<boolean>(false);
+  const [chopTrackName, setChopTrackName] = useState<string>('Sean Beatbox');
+  const [chopInstances, setChopInstances] = useState<any[]>([]);
+  const [isScanningChops, setIsScanningChops] = useState<boolean>(false);
+  const [chopScanError, setChopScanError] = useState<string | null>(null);
+  const [chopSessionInfo, setChopSessionInfo] = useState<{ bpm: number; totalClips: number; distinctShapes: number } | null>(null);
+  const [auditioningInstance, setAuditioningInstance] = useState<number | null>(null);
+  const [loadingChopIndex, setLoadingChopIndex] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
@@ -121,6 +145,12 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
       setCtrl2(state.ctrl2);
       setCtrl3(state.ctrl3);
       setIsChromaticMode(state.chromatic);
+      if (typeof state.hold === 'boolean') {
+        setIsHoldMode(state.hold);
+      }
+      if (typeof state.globalTranspose === 'number') {
+        setGlobalTranspose(state.globalTranspose);
+      }
       setNativeStateReady(true);
       setCardStatusMessage('NATIVE SP-404 STATE RESTORED · UI HYDRATED');
     });
@@ -128,8 +158,14 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
       if (isMounted) setTransferProgress(progress.phase === 'complete' || progress.phase === 'cancelled' || progress.phase === 'error' ? null : progress);
     });
 
-    // Initialize audio context on mount safely
-    sp404AudioEngine.initAudio();
+    // Initialize audio context on mount safely and load default Walls:Devine library
+    sp404AudioEngine.initAudio().then(() => {
+      if (isMounted) {
+        sp404AudioEngine.loadLibrary(WALLS_DEVINE_VOL1_ID).then(() => {
+          if (isMounted) setTick((t) => t + 1);
+        });
+      }
+    });
     sp404AudioEngine.listLibraries().then(setLibraries).catch(() => setLibraries([]));
     const nativeStateFallback = nativeHost
       ? window.setTimeout(() => setNativeStateReady(true), 1000)
@@ -232,6 +268,21 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const key = e.key.toLowerCase();
+      if (key === ' ' || key === 'escape') {
+        e.preventDefault();
+        sp404AudioEngine.stopAllPads();
+        setCardStatusMessage('STOP ALL PADS (SILENCE)');
+        return;
+      }
+      if (key === 'h' && !e.repeat) {
+        setIsHoldMode((prev) => {
+          const next = !prev;
+          sp404AudioEngine.setHoldMode(next);
+          setCardStatusMessage(next ? 'HOLD MODE ACTIVE · PADS LATCH PLAYBACK' : 'HOLD MODE OFF');
+          return next;
+        });
+        return;
+      }
       const padId = keyMap[key];
       if (padId && !e.repeat) {
         handlePadPress(padId);
@@ -321,10 +372,11 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
     try {
       const profile = SP404_LEGACY_PROFILES[hardwareProfileId];
       sp404AudioEngine.setHardwareProfile(hardwareProfileId);
-      const manifest = await sp404AudioEngine.saveLibrary(libraryName, profile);
+      const manifest = await sp404AudioEngine.saveLibrary(libraryName, profile, selectedLibraryId);
       const next = await sp404AudioEngine.listLibraries();
       setLibraries(next);
       setSelectedLibraryId(manifest.id);
+      setLibraryName(manifest.name);
       setCardStatusMessage(`SET SAVED: ${manifest.name.toUpperCase()}`);
     } catch (err) {
       console.error('Could not save SP-404 set:', err);
@@ -332,10 +384,28 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
     }
   };
 
-  const handleLoadLibrary = async () => {
-    if (!selectedLibraryId) return;
-    const manifest = libraries.find((item) => item.id === selectedLibraryId);
-    const loaded = await sp404AudioEngine.loadLibrary(selectedLibraryId);
+  const handleRenameLibrary = async () => {
+    const trimmed = libraryName.trim();
+    if (!trimmed) return;
+    try {
+      const updated = await sp404AudioEngine.renameLibrary(selectedLibraryId, trimmed);
+      if (updated) {
+        const next = await sp404AudioEngine.listLibraries();
+        setLibraries(next);
+        setSelectedLibraryId(updated.id);
+        setLibraryName(updated.name);
+        setCardStatusMessage(`SET RENAMED: ${updated.name.toUpperCase()}`);
+      }
+    } catch (err) {
+      console.error('Could not rename SP-404 set:', err);
+      setCardStatusMessage('SET RENAME ERROR: BROWSER STORAGE UNAVAILABLE.');
+    }
+  };
+
+  const handleLoadPresetId = async (id: string) => {
+    setSelectedLibraryId(id);
+    const manifest = libraries.find((item) => item.id === id) || (id === WALLS_DEVINE_VOL1_ID ? getWallsDevineVol1Manifest() : undefined);
+    const loaded = await sp404AudioEngine.loadLibrary(id);
     if (loaded && manifest) {
       setLibraryName(manifest.name);
       setHardwareProfileId(manifest.hardware.id);
@@ -349,6 +419,23 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
       setCardStatusMessage(`SET LOADED: ${manifest.name.toUpperCase()}`);
     } else {
       setCardStatusMessage('SET LOAD ERROR: INCOMPATIBLE LEGACY PROFILE.');
+    }
+  };
+
+  const getWallsDevineSongName = (bank: BankLetter): string | null => {
+    if (!libraryName.toLowerCase().includes('walls') && selectedLibraryId !== WALLS_DEVINE_VOL1_ID) return null;
+    switch (bank) {
+      case 'A': return 'DECAY';
+      case 'B': return 'CONVICTION';
+      case 'C': return 'POETRY';
+      case 'D': return 'GRATITUDE';
+      case 'E': return 'STASH DADDY';
+      case 'F': return 'JOINT QUEEN';
+      case 'G': return 'AUXILIARY';
+      case 'H': return 'RESOLVE';
+      case 'I': return 'LIVE AUX';
+      case 'J': return 'SCRATCH';
+      default: return null;
     }
   };
 
@@ -394,6 +481,100 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
     }
   };
 
+  const handleScanChopTrack = async (targetTrack = chopTrackName) => {
+    setIsScanningChops(true);
+    setChopScanError(null);
+    try {
+      const res = await stateBridge.findSp404Samples(targetTrack);
+      if (!res.ok) {
+        setChopScanError(res.error || 'Failed to scan track split waveforms.');
+        setChopInstances([]);
+        return;
+      }
+      setChopSessionInfo({
+        bpm: res.data.bpm,
+        totalClips: res.data.totalClips,
+        distinctShapes: res.data.distinctSplitForms
+      });
+      setChopInstances(res.data.instances || []);
+    } catch (err: any) {
+      setChopScanError(err?.message || String(err));
+    } finally {
+      setIsScanningChops(false);
+    }
+  };
+
+  const handleGrabChop = async (instNum: number, targetPad = selectedPadId) => {
+    setLoadingChopIndex(instNum);
+    try {
+      const res = await stateBridge.grabSp404Sample({
+        track: chopTrackName,
+        instance: instNum,
+        bank: activeBank,
+        pad: targetPad
+      });
+      if (res.ok && res.wavBase64) {
+        await sp404AudioEngine.loadSampleBase64(res.bank, res.padId, res.wavBase64, res.label);
+        setCardStatusMessage(`LOADED INST #${instNum} -> PAD ${res.bank}${String(res.padId).padStart(2, '0')}`);
+      }
+    } catch (err: any) {
+      console.warn('Failed to grab chop:', err);
+    } finally {
+      setLoadingChopIndex(null);
+    }
+  };
+
+  const handleMake12PadPattern = async () => {
+    setIsScanningChops(true);
+    try {
+      const res = await stateBridge.makeSp404Pattern({
+        track: chopTrackName,
+        bank: activeBank,
+        count: 12
+      });
+      if (res.ok && Array.isArray(res.pads)) {
+        for (const p of res.pads) {
+          if (p.wavBase64) {
+            await sp404AudioEngine.loadSampleBase64(p.bank, p.pad, p.wavBase64, p.label);
+          }
+        }
+        setCardStatusMessage(`12-PAD CHOP KIT LOADED ONTO BANK ${activeBank}`);
+      }
+    } catch (err: any) {
+      console.warn('Failed to make pattern kit:', err);
+    } finally {
+      setIsScanningChops(false);
+    }
+  };
+
+  const handleAuditionChop = async (instNum: number) => {
+    setAuditioningInstance(instNum);
+    try {
+      const res = await stateBridge.grabSp404Sample({
+        track: chopTrackName,
+        instance: instNum,
+        bank: activeBank,
+        pad: selectedPadId
+      });
+      if (res.ok && res.wavBase64) {
+        const ctx = sp404AudioEngine.getAudioContext();
+        if (ctx) {
+          const binary = atob(res.wavBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const buf = await ctx.decodeAudioData(bytes.buffer);
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          src.start();
+          src.onended = () => setAuditioningInstance(null);
+        }
+      }
+    } catch {
+      setAuditioningInstance(null);
+    }
+  };
+
   const handleExportCardTemplate = async () => {
     setIsExporting(true);
     setCardStatusMessage('PACKAGING LEGACY SP-404 IMPORT FILES...');
@@ -428,6 +609,10 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
     const oct = chromaticOctave + Math.floor(semitone / 12);
     const sign = semitone > 0 ? `+${semitone}` : `${semitone}`;
     return `${noteName}${oct} (${sign})`;
+  };
+
+  const padIsPlaying = (): boolean => {
+    return currentPads.some((p) => p.isHit || sp404AudioEngine.isPadPlaying(activeBank, p.id));
   };
 
   return (
@@ -493,13 +678,26 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
             <input
               value={libraryName}
               onChange={(e) => setLibraryName(e.target.value)}
-              className="w-36 bg-transparent text-[10px] text-white outline-none"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRenameLibrary();
+              }}
+              className="w-36 bg-transparent text-[10px] text-white outline-none focus:border-b focus:border-amber-400"
               aria-label="SP-404 set name"
+              title="Click RENAME or press Enter to rename active set"
             />
             <button
               type="button"
+              onClick={handleRenameLibrary}
+              className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black hover:bg-amber-500/30 transition"
+              title="Rename active set in library"
+            >
+              RENAME
+            </button>
+            <button
+              type="button"
               onClick={handleSaveLibrary}
-              className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black"
+              className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black hover:bg-emerald-500/30 transition"
+              title="Save current state to library"
             >
               SAVE
             </button>
@@ -509,6 +707,18 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
               className="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[9px] font-black"
             >
               EXPORT
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsChopFinderOpen(true);
+                handleScanChopTrack();
+              }}
+              className="px-2 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black hover:bg-amber-500/30 transition flex items-center gap-1"
+              title="Open Sample Finder & Split Waveform Chop Loader"
+            >
+              <Scissors className="w-2.5 h-2.5" />
+              CHOP FINDER
             </button>
           </div>
 
@@ -543,10 +753,19 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
           <button
             type="button"
             disabled={!selectedLibraryId}
-            onClick={handleLoadLibrary}
+            onClick={() => handleLoadPresetId(selectedLibraryId)}
             className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black disabled:opacity-40"
           >
             LOAD SET
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleLoadPresetId(WALLS_DEVINE_VOL1_ID)}
+            className="px-2.5 py-1.5 rounded-lg bg-amber-500/25 hover:bg-amber-500/35 text-amber-300 border border-amber-500/60 text-[10px] font-black transition flex items-center gap-1 shadow"
+            title="Instant 1-click load of Walls:Devine Vol. 1 (Decay, Conviction, Poetry, Gratitude, Joint Queen, Stash Daddy)"
+          >
+            ★ WALLS / DEVINE
           </button>
 
           <button
@@ -739,9 +958,67 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   </div>
 
                   {/* Sample / Note Title (Crisp Pure White) */}
-                  <span className="text-xs font-black text-white tracking-wider truncate max-w-[140px] drop-shadow">
-                    {isChromaticMode ? getChromaticNoteLabel(selectedPadId) : selectedPad?.label || 'EMPTY SLOT'}
-                  </span>
+                  {isEditingOledLabel ? (
+                    <div className="flex items-center justify-center gap-1 my-0.5">
+                      <input
+                        type="text"
+                        value={oledLabelDraft}
+                        onChange={(e) => setOledLabelDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const trimmed = oledLabelDraft.trim();
+                            if (trimmed) {
+                              sp404AudioEngine.setPadLabel(activeBank, selectedPadId, trimmed);
+                            }
+                            setIsEditingOledLabel(false);
+                          } else if (e.key === 'Escape') {
+                            setIsEditingOledLabel(false);
+                          }
+                        }}
+                        onBlur={() => {
+                          const trimmed = oledLabelDraft.trim();
+                          if (trimmed) {
+                            sp404AudioEngine.setPadLabel(activeBank, selectedPadId, trimmed);
+                          }
+                          setIsEditingOledLabel(false);
+                        }}
+                        autoFocus
+                        className="w-28 text-center text-[10.5px] font-black bg-black/90 border border-[#ff5500] text-white rounded px-1.5 py-0.5 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const trimmed = oledLabelDraft.trim();
+                          if (trimmed) {
+                            sp404AudioEngine.setPadLabel(activeBank, selectedPadId, trimmed);
+                          }
+                          setIsEditingOledLabel(false);
+                        }}
+                        className="text-emerald-400 hover:text-emerald-300 p-0.5"
+                        title="Confirm rename"
+                      >
+                        <Check size={11} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      className="group flex items-center justify-center gap-1 cursor-pointer max-w-[150px]"
+                      onClick={() => {
+                        if (!isChromaticMode && selectedPad) {
+                          setOledLabelDraft(selectedPad.label || '');
+                          setIsEditingOledLabel(true);
+                        }
+                      }}
+                      title="Click to rename sample"
+                    >
+                      <span className="text-xs font-black text-white tracking-wider truncate max-w-[130px] drop-shadow group-hover:text-[#ff8844] transition">
+                        {isChromaticMode ? getChromaticNoteLabel(selectedPadId) : selectedPad?.label || 'EMPTY SLOT'}
+                      </span>
+                      {!isChromaticMode && (
+                        <Edit2 size={10} className="text-slate-400 opacity-0 group-hover:opacity-100 hover:text-[#ff5500] transition shrink-0" />
+                      )}
+                    </div>
+                  )}
 
                   {/* Pad Info & BPM */}
                   <div className="flex items-center gap-2 mt-1 text-[9px] font-bold">
@@ -749,7 +1026,11 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                       PAD {activeBank}{selectedPadId.toString().padStart(2, '0')}
                     </span>
                     <span className="text-amber-300">
-                      {globalTranspose !== 0 ? `PITCH: ${globalTranspose > 0 ? `+${globalTranspose}` : globalTranspose}st` : `${bpm} BPM`}
+                      {globalTranspose !== 0
+                        ? `TRANSPOSE: ${globalTranspose > 0 ? `+${globalTranspose}` : globalTranspose}st`
+                        : activeEffect === 'pitch'
+                        ? `VARISPEED: ${(((ctrl1 - 5) / 5) * 12 + ((ctrl2 - 5) / 5) * 1.0) >= 0 ? '+' : ''}${(((ctrl1 - 5) / 5) * 12 + ((ctrl2 - 5) / 5) * 1.0).toFixed(1)}st`
+                        : `${bpm} BPM`}
                     </span>
                   </div>
                 </div>
@@ -823,7 +1104,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
             })}
           </div>
 
-          {/* Quick Pitch Transpose & Vinyl Speed Options */}
+          {/* Quick Pitch Transpose & Vinyl / Varispeed / MFX Options */}
           <div className="flex items-center gap-2">
             {activeEffect === 'vinyl' && (
               <div className="flex items-center gap-1.5 text-[10px]">
@@ -835,6 +1116,47 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                 >
                   {isVinyl33Rpm ? '33 ⅓ RPM' : '45 RPM'}
                 </button>
+              </div>
+            )}
+
+            {activeEffect === 'pitch' && (
+              <div className="flex items-center gap-1.5 text-[10px] bg-[#1a1e2b] px-2 py-1 rounded-lg border border-purple-500/40 shadow">
+                <span className="text-purple-300 font-bold">VARISPEED:</span>
+                <span className="text-amber-400 font-mono font-black">
+                  {(((ctrl1 - 5) / 5) * 12 + ((ctrl2 - 5) / 5) * 1.0) >= 0 ? '+' : ''}
+                  {(((ctrl1 - 5) / 5) * 12 + ((ctrl2 - 5) / 5) * 1.0).toFixed(1)} st
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCtrl1(5.0);
+                    setCtrl2(5.0);
+                    sp404AudioEngine.setCtrl1(5.0);
+                    sp404AudioEngine.setCtrl2(5.0);
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-[9px] font-bold border border-purple-500/30"
+                  title="Reset Pitch/Speed knobs to 0 semitone offset"
+                >
+                  RESET
+                </button>
+              </div>
+            )}
+
+            {activeEffect === 'djfx' && (
+              <div className="flex items-center gap-1.5 text-[10px] bg-[#1a1e2b] px-2 py-1 rounded-lg border border-cyan-500/40 shadow">
+                <span className="text-cyan-300 font-bold">DJFX:</span>
+                <span className="text-slate-300 text-[9px]">
+                  Loop: {(20 + (ctrl1 / 10) * 780).toFixed(0)}ms · Speed: {ctrl2 < 4.8 ? 'REV' : ctrl2 > 5.2 ? 'FAST' : '1X'} · Mix: {(ctrl3 * 10).toFixed(0)}%
+                </span>
+              </div>
+            )}
+
+            {activeEffect === 'cassette' && (
+              <div className="flex items-center gap-1.5 text-[10px] bg-[#1a1e2b] px-2 py-1 rounded-lg border border-amber-500/40 shadow">
+                <span className="text-amber-300 font-bold">TAPE:</span>
+                <span className="text-slate-300 text-[9px]">
+                  Flutter: {(ctrl1 * 10).toFixed(0)}% · Tone: {ctrl2.toFixed(1)} · Sat: {ctrl3.toFixed(1)}
+                </span>
               </div>
             )}
 
@@ -876,29 +1198,112 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
 
         {/* 4. Bank Selection, Chromatic Mode, and Live Rec / Resample Row */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/80 pb-4">
-          {/* Banks A to J */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-white font-black uppercase tracking-widest mr-1">
-              BANK:
-            </span>
-            {(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] as const).map((b) => (
-              <button
-                key={b}
-                type="button"
-                onClick={() => setActiveBank(b)}
-                className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs border transition ${
-                  activeBank === b
-                    ? 'bg-[#ff5500] text-black border-white shadow-[0_0_10px_#ff5500]'
-                    : 'bg-[#1e2330] text-slate-200 border-slate-600 hover:text-white hover:border-slate-400'
-                }`}
-              >
-                {b}
-              </button>
-            ))}
+          {/* Banks A to J: Two Lines (Line 1: A-E, Line 2: F-J directly underneath) */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-slate-300 font-black uppercase tracking-widest w-12 text-right mr-1">
+                BANK:
+              </span>
+              {(['A', 'B', 'C', 'D', 'E'] as const).map((b) => {
+                const songTitle = getWallsDevineSongName(b);
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => {
+                      setActiveBank(b);
+                      sp404AudioEngine.ensureBankLoaded(b);
+                    }}
+                    className={`h-7 min-w-[48px] px-2.5 rounded-lg flex items-center justify-center font-black text-xs border transition gap-1.5 ${
+                      activeBank === b
+                        ? 'bg-[#ff5500] text-black border-white shadow-[0_0_12px_#ff5500]'
+                        : 'bg-[#1e2330] text-slate-200 border-slate-600 hover:text-white hover:border-slate-400'
+                    }`}
+                    title={songTitle ? `Bank ${b}: ${songTitle}` : `Bank ${b}`}
+                  >
+                    <span>{b}</span>
+                    {songTitle && (
+                      <span className={`text-[8.5px] font-mono tracking-tight hidden sm:inline ${
+                        activeBank === b ? 'text-black/90 font-black' : 'text-[#ff8844]'
+                      }`}>
+                        {songTitle}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-transparent font-black uppercase tracking-widest w-12 text-right mr-1 select-none">
+                BANK:
+              </span>
+              {(['F', 'G', 'H', 'I', 'J'] as const).map((b) => {
+                const songTitle = getWallsDevineSongName(b);
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => {
+                      setActiveBank(b);
+                      sp404AudioEngine.ensureBankLoaded(b);
+                    }}
+                    className={`h-7 min-w-[48px] px-2.5 rounded-lg flex items-center justify-center font-black text-xs border transition gap-1.5 ${
+                      activeBank === b
+                        ? 'bg-[#ff5500] text-black border-white shadow-[0_0_12px_#ff5500]'
+                        : 'bg-[#1e2330] text-slate-200 border-slate-600 hover:text-white hover:border-slate-400'
+                    }`}
+                    title={songTitle ? `Bank ${b}: ${songTitle}` : `Bank ${b}`}
+                  >
+                    <span>{b}</span>
+                    {songTitle && (
+                      <span className={`text-[8.5px] font-mono tracking-tight hidden sm:inline ${
+                        activeBank === b ? 'text-black/90 font-black' : 'text-[#ff8844]'
+                      }`}>
+                        {songTitle}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Performance & Recording Action Buttons */}
           <div className="flex items-center gap-2">
+            {/* Authentic Roland SP-404 Latching HOLD Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextHold = !isHoldMode;
+                setIsHoldMode(nextHold);
+                sp404AudioEngine.setHoldMode(nextHold);
+                setCardStatusMessage(nextHold ? 'HOLD MODE ACTIVE · PADS LATCH PLAYBACK' : 'HOLD MODE OFF');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-[10.5px] font-black border transition flex items-center gap-1.5 shadow ${
+                isHoldMode
+                  ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_14px_#f59e0b]'
+                  : 'bg-[#1e2330] text-slate-200 border-slate-600 hover:text-white hover:border-slate-400'
+              }`}
+              title="Latching Hold Mode (H): Sustains pad playback continuously"
+            >
+              <Lock size={13} className={isHoldMode ? 'animate-pulse' : ''} />
+              <span>HOLD {isHoldMode ? 'ON' : 'OFF'}</span>
+            </button>
+
+            {/* Instant Stop All Voices Button */}
+            <button
+              type="button"
+              onClick={() => {
+                sp404AudioEngine.stopAllPads();
+                setCardStatusMessage('STOP ALL PADS (SILENCE)');
+              }}
+              className="px-3 py-1.5 rounded-lg text-[10.5px] font-black border transition flex items-center gap-1.5 shadow bg-rose-950/80 text-rose-300 border-rose-700/80 hover:bg-rose-900 hover:text-white"
+              title="Stop all playing voices (Space / Esc)"
+            >
+              <Square size={11} className="fill-current" />
+              <span>STOP ALL</span>
+            </button>
+
             {/* Chromatic Keyboard Mode Toggle */}
             <button
               type="button"
@@ -908,7 +1313,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_#c084fc]'
                   : 'bg-[#1e2330] text-slate-200 border-slate-600 hover:text-white hover:border-slate-400'
               }`}
-              title="Transform 12 pads into a chromatic pitch keyboard"
+              title="Chromatic Mode: Maps active sample across 12-pad chromatic range"
             >
               <Music size={13} />
               <span>CHROMATIC {isChromaticMode ? 'ON' : 'OFF'}</span>
@@ -933,7 +1338,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   ? 'bg-amber-500 text-black border-white'
                   : 'bg-rose-950/80 text-rose-300 border-rose-700 hover:bg-rose-900'
               }`}
-              title="Record Ableton track input in real-time WHILE still playing back 404 keys!"
+              title="Record external track input directly to armed pad"
             >
               {isRecording ? <Square size={13} /> : <Mic size={13} />}
               <span>
@@ -964,7 +1369,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   ? 'bg-amber-500 text-black border-white'
                   : 'bg-purple-950/80 text-purple-300 border-purple-700 hover:bg-purple-900'
               }`}
-              title="Resample combined pad playback + live input directly into an armed pad!"
+              title="Resample master output directly to armed pad"
             >
               <Repeat size={13} />
               <span>
@@ -993,6 +1398,8 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
           {currentPads.map((pad, idx) => {
             const isArmedTarget = armedRecordPad && armedRecordPad.bank === activeBank && armedRecordPad.id === pad.id;
             const isSelected = selectedPadId === pad.id;
+            const isPlaying = sp404AudioEngine.isPadPlaying(activeBank, pad.id);
+            const isHeld = isPlaying && isHoldMode;
 
             return (
               <button
@@ -1007,12 +1414,16 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                 className={`relative h-24 rounded-2xl flex flex-col justify-between p-3 text-left transition-all duration-75 active:scale-95 border-2 shadow-lg ${
                   pad.isHit
                     ? 'bg-[#ff5500] text-black border-white shadow-[0_0_24px_#ff5500]'
+                    : isHeld
+                    ? 'bg-[#252014] text-white border-amber-400 ring-2 ring-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.55)]'
                     : isArmedTarget
                     ? recordMode === 'resample'
                       ? 'bg-purple-900 text-white border-purple-300 animate-pulse shadow-[0_0_16px_#c084fc]'
                       : 'bg-rose-900 text-white border-rose-300 animate-pulse shadow-[0_0_16px_#f43f5e]'
                     : isSelected
                     ? 'bg-[#293042] text-white border-[#ff5500] ring-2 ring-[#ff5500]/60 shadow-xl'
+                    : isPlaying
+                    ? 'bg-[#222a3a] text-white border-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.4)]'
                     : pad.audioBuffer || pad.nativeSampleAvailable
                     ? 'bg-[#1e2331] text-white border-slate-500 hover:border-slate-300 hover:bg-[#252c3d]'
                     : 'bg-[#131620] text-slate-400 border-slate-700/80 hover:border-slate-500'
@@ -1024,8 +1435,13 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                     <span className="text-xs font-black text-white">
                       {pad.id}
                     </span>
-                    {(pad.audioBuffer || pad.nativeSampleAvailable) && (
-                      <span className={`w-1.5 h-1.5 rounded-full ${pad.isHit ? 'bg-black' : 'bg-emerald-400 shadow-[0_0_4px_#34d399]'}`} />
+                    {isHeld ? (
+                      <span className="text-[7.5px] font-black px-1 py-0.2 rounded bg-amber-400 text-black animate-pulse flex items-center gap-0.5 shadow">
+                        <Lock size={8} />
+                        HELD ↻
+                      </span>
+                    ) : (pad.audioBuffer || pad.nativeSampleAvailable) && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${pad.isHit || isPlaying ? 'bg-black' : 'bg-emerald-400 shadow-[0_0_4px_#34d399]'}`} />
                     )}
                   </div>
                   <div className="flex items-center gap-1">
@@ -1057,11 +1473,68 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
 
                 {/* Bottom Label & Hardware Sub-Label */}
                 <div className="w-full mt-auto">
-                  <span className="text-[10.5px] font-black tracking-tight truncate leading-tight block text-white">
-                    {isChromaticMode ? getChromaticNoteLabel(pad.id) : pad.label}
-                  </span>
-                  <span className="text-[7.5px] font-black tracking-widest text-[#ff8844] uppercase block truncate opacity-90">
-                    {pad.nativeSampleAvailable && !pad.audioBuffer ? 'NATIVE RESTORED' : PAD_SUB_LABELS[idx]}
+                  {inlineEditingPadId === pad.id ? (
+                    <input
+                      type="text"
+                      value={inlinePadName}
+                      onChange={(e) => setInlinePadName(e.target.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          const trimmed = inlinePadName.trim();
+                          if (trimmed) {
+                            sp404AudioEngine.setPadLabel(pad.bank, pad.id, trimmed);
+                          }
+                          setInlineEditingPadId(null);
+                        } else if (e.key === 'Escape') {
+                          setInlineEditingPadId(null);
+                        }
+                      }}
+                      onBlur={() => {
+                        const trimmed = inlinePadName.trim();
+                        if (trimmed) {
+                          sp404AudioEngine.setPadLabel(pad.bank, pad.id, trimmed);
+                        }
+                        setInlineEditingPadId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      autoFocus
+                      className="w-full bg-black/95 border border-[#ff5500] text-white text-[10px] font-black rounded px-1 py-0.5 outline-none mb-0.5"
+                    />
+                  ) : (
+                    <div
+                      className="group/lbl flex items-center justify-between w-full"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setInlineEditingPadId(pad.id);
+                        setInlinePadName(pad.label);
+                      }}
+                      title="Double-click to rename pad"
+                    >
+                      <span className="text-[10.5px] font-black tracking-tight truncate leading-tight block text-white group-hover/lbl:text-[#ff8844] transition">
+                        {isChromaticMode ? getChromaticNoteLabel(pad.id) : pad.label}
+                      </span>
+                      {!isChromaticMode && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInlineEditingPadId(pad.id);
+                            setInlinePadName(pad.label);
+                          }}
+                          className="opacity-0 group-hover/lbl:opacity-100 hover:text-[#ff5500] text-slate-400 p-0.5 transition shrink-0"
+                          title="Rename pad"
+                        >
+                          <Edit2 size={9} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <span className={`text-[7.5px] font-black tracking-widest uppercase block truncate opacity-90 ${
+                    isHeld ? 'text-amber-300 font-extrabold' : 'text-[#ff8844]'
+                  }`}>
+                    {isHeld ? 'HOLD LATCHED' : pad.nativeSampleAvailable && !pad.audioBuffer ? 'NATIVE RESTORED' : PAD_SUB_LABELS[idx]}
                   </span>
                 </div>
               </button>
@@ -1113,7 +1586,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   type="text"
                   value={editingPad.label}
                   onChange={(e) => {
-                    editingPad.label = e.target.value;
+                    const newLabel = e.target.value;
+                    editingPad.label = newLabel;
+                    sp404AudioEngine.setPadLabel(editingPad.bank, editingPad.id, newLabel);
                     setTick((t) => t + 1);
                   }}
                   className="w-full bg-[#0d0f17] border border-slate-600 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-[#ff5500]"
@@ -1132,7 +1607,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                     step={1}
                     value={editingPad.pitch}
                     onChange={(e) => {
-                      editingPad.pitch = parseInt(e.target.value, 10);
+                      const p = parseInt(e.target.value, 10);
+                      editingPad.pitch = p;
+                      sp404AudioEngine.setPadParam(editingPad.bank, editingPad.id, 'pitch', p);
                       setTick((t) => t + 1);
                     }}
                     className="w-full accent-[#ff5500]"
@@ -1149,7 +1626,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                     step={0.05}
                     value={editingPad.volume}
                     onChange={(e) => {
-                      editingPad.volume = parseFloat(e.target.value);
+                      const v = parseFloat(e.target.value);
+                      editingPad.volume = v;
+                      sp404AudioEngine.setPadParam(editingPad.bank, editingPad.id, 'volume', v);
                       setTick((t) => t + 1);
                     }}
                     className="w-full accent-[#ff5500]"
@@ -1163,7 +1642,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   <select
                     value={editingPad.mode}
                     onChange={(e) => {
-                      editingPad.mode = e.target.value as any;
+                      const m = e.target.value as any;
+                      editingPad.mode = m;
+                      sp404AudioEngine.setPadParam(editingPad.bank, editingPad.id, 'mode', m);
                       setTick((t) => t + 1);
                     }}
                     className="w-full bg-[#0d0f17] border border-slate-600 rounded-lg px-2.5 py-1.5 text-white"
@@ -1178,7 +1659,9 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   <select
                     value={editingPad.muteGroup}
                     onChange={(e) => {
-                      editingPad.muteGroup = parseInt(e.target.value, 10);
+                      const g = parseInt(e.target.value, 10);
+                      editingPad.muteGroup = g;
+                      sp404AudioEngine.setPadParam(editingPad.bank, editingPad.id, 'muteGroup', g);
                       setTick((t) => t + 1);
                     }}
                     className="w-full bg-[#0d0f17] border border-slate-600 rounded-lg px-2.5 py-1.5 text-white"
@@ -1196,6 +1679,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                   type="button"
                   onClick={() => {
                     editingPad.reverse = !editingPad.reverse;
+                    sp404AudioEngine.setPadParam(editingPad.bank, editingPad.id, 'reverse', editingPad.reverse);
                     setTick((t) => t + 1);
                   }}
                   className={`flex-1 py-1.5 rounded-lg border font-bold text-[11px] transition ${
@@ -1212,6 +1696,7 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
                     editingPad.audioBuffer = null;
                     editingPad.waveform = [];
                     editingPad.duration = 0;
+                    sp404AudioEngine.setPadParam(editingPad.bank, editingPad.id, 'volume', 0);
                     setTick((t) => t + 1);
                   }}
                   className="py-1.5 px-3 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 font-bold text-[11px] flex items-center gap-1.5"
@@ -1232,10 +1717,158 @@ export const SP404Workstation: React.FC<SP404WorkstationProps> = ({
           </div>
         </div>
       )}
+
+      {/* 8. Sample Finder & Split Waveform Chop Loader Modal */}
+      {isChopFinderOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-mono text-xs">
+          <div className="bg-[#12151f] border-2 border-amber-500/50 rounded-3xl w-full max-w-3xl max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-700/80 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_#f59e0b] animate-pulse" />
+                <div>
+                  <h3 className="font-black text-amber-300 text-sm tracking-wide">
+                    SP-404 SAMPLE FINDER & SPLIT WAVEFORM CHOP LOADER
+                  </h3>
+                  <p className="text-[10px] text-slate-400">
+                    Extract edited waveform lengths, repeated sounds, and pattern kits from active Ableton session
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsChopFinderOpen(false)}
+                className="text-slate-400 hover:text-white px-2 py-1 rounded-lg hover:bg-white/10 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Track Selector & Action Bar */}
+            <div className="flex flex-wrap items-center gap-3 bg-[#181d2a] p-3 rounded-xl border border-slate-700/60">
+              <span className="text-[11px] text-slate-300 font-bold">Track:</span>
+              <input
+                type="text"
+                value={chopTrackName}
+                onChange={(e) => setChopTrackName(e.target.value)}
+                placeholder="e.g. Sean Beatbox, Chop Sample, Snare"
+                className="px-3 py-1.5 rounded-lg bg-[#0e1118] border border-slate-600 text-amber-200 text-xs flex-1 min-w-44 focus:outline-none focus:border-amber-400"
+              />
+              <button
+                type="button"
+                disabled={isScanningChops}
+                onClick={() => handleScanChopTrack()}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 text-black font-black text-xs hover:bg-amber-400 transition disabled:opacity-50"
+              >
+                {isScanningChops ? 'SCANNING...' : 'SCAN TRACK'}
+              </button>
+              <button
+                type="button"
+                disabled={isScanningChops || chopInstances.length === 0}
+                onClick={handleMake12PadPattern}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 font-black text-xs hover:bg-emerald-500/30 transition disabled:opacity-40"
+              >
+                MAKE 12-PAD KIT ({activeBank}1..{activeBank}12)
+              </button>
+            </div>
+
+            {/* Session Stats */}
+            {chopSessionInfo && (
+              <div className="flex items-center gap-6 text-[10.5px] text-slate-400 px-1">
+                <span>Tempo: <strong className="text-slate-200">{chopSessionInfo.bpm} BPM</strong></span>
+                <span>Total Split Forms: <strong className="text-slate-200">{chopSessionInfo.totalClips}</strong></span>
+                <span>Distinct Waveform Shapes: <strong className="text-amber-300">{chopSessionInfo.distinctShapes}</strong></span>
+                <span>Target: <strong className="text-cyan-300">Bank {activeBank} Pad {selectedPadId}</strong></span>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {chopScanError && (
+              <div className="bg-red-500/20 border border-red-500/40 text-red-300 p-2.5 rounded-xl text-xs">
+                {chopScanError}
+              </div>
+            )}
+
+            {/* Split Form Instances List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+              {chopInstances.length === 0 && !isScanningChops && (
+                <div className="text-center py-12 text-slate-500 text-xs">
+                  Enter a track name above (or click SCAN TRACK) to discover split waveform instances.
+                </div>
+              )}
+
+              {chopInstances.map((inst) => {
+                const isAuditioning = auditioningInstance === inst.instance;
+                const isLoading = loadingChopIndex === inst.instance;
+                return (
+                  <div
+                    key={inst.instance}
+                    className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
+                      inst.isAudible
+                        ? 'bg-[#151926] border-slate-700/60 hover:border-slate-500'
+                        : 'bg-[#12141c] border-slate-800/40 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-7 h-7 rounded-lg bg-slate-800 text-amber-300 font-bold flex items-center justify-center text-xs border border-slate-700">
+                        #{inst.instance}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-200 text-xs">
+                            {inst.durationSec.toFixed(2)}s ({inst.durationBeats.toFixed(2)} beats)
+                          </span>
+                          {inst.repeatCount > 1 && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                              REPEATS x{inst.repeatCount}
+                            </span>
+                          )}
+                          {!inst.isAudible && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-slate-700 text-slate-400">
+                              LOW ENERGY
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate max-w-sm">
+                          Start: {inst.startBeat.toFixed(2)}b ({inst.startTimeSec.toFixed(2)}s) · Peak: {inst.peak.toFixed(3)} · {inst.sourceFilename}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAuditionChop(inst.instance)}
+                        disabled={isAuditioning}
+                        className="px-2.5 py-1 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 text-xs font-bold transition disabled:opacity-50"
+                      >
+                        {isAuditioning ? 'PLAYING...' : 'AUDITION'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleGrabChop(inst.instance)}
+                        disabled={isLoading}
+                        className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 text-xs font-black transition disabled:opacity-50"
+                      >
+                        {isLoading ? 'LOADING...' : `LOAD PAD ${activeBank}${String(selectedPadId).padStart(2, '0')}`}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-
-  function padIsPlaying(): boolean {
-    return currentPads.some((p) => p.isHit);
-  }
 };
+
+export const SP404Workstation = React.memo(SP404WorkstationComponent, (prev, next) => {
+  return (
+    prev.onSwitchToPedalLab === next.onSwitchToPedalLab &&
+    prev.onSwitchToState === next.onSwitchToState &&
+    prev.onOpenRoutingModal === next.onOpenRoutingModal &&
+    prev.telemetry?.bpm === next.telemetry?.bpm
+  );
+});

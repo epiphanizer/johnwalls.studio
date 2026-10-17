@@ -11,7 +11,7 @@ interface WaveformVisualizerProps {
   bpm?: number;
 }
 
-export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
+export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = React.memo(({
   inspectedNodeId,
   inspectedNodeTitle,
   inspectedNodeColor,
@@ -341,4 +341,4 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       </div>
     </div>
   );
-};
+});

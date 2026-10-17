@@ -35,12 +35,14 @@ struct SP404PadData {
     std::string category{"custom"};
     std::vector<float> sampleL;
     std::vector<float> sampleR;
+    std::vector<float> waveform;
     float sampleRate{48000.0f};
     float durationSeconds{0.0f};
     float pitchSemitones{0.0f}; // -24 to +24
     float volume{1.0f};
     float pan{0.0f}; // -1.0 to 1.0
     bool isLoop{false};
+    bool isGate{false};
     bool isReverse{false};
     int muteGroup{0}; // 0 = none, 1 = hihat choke group
 };
@@ -56,9 +58,11 @@ struct SP404Voice {
     float panR{1.0f};
     int muteGroup{0};
     bool loop{false};
+    bool gate{false};
     bool reverse{false};
     float fadeOutGain{1.0f};
     bool fadingOut{false};
+    uint64_t samplesRendered{0};
     const std::vector<float>* pSampleL{nullptr};
     const std::vector<float>* pSampleR{nullptr};
 };
@@ -102,10 +106,23 @@ public:
     bool loadCustomSample(int bankIndex, int padId, const float* left, const float* right,
                           size_t numSamples, float sampleRate, const std::string& label,
                           float pitchSemitones = 0.0f, float volume = 1.0f, float pan = 0.0f,
-                          bool isLoop = false, bool isReverse = false, int muteGroup = 0);
+                          bool isLoop = false, bool isReverse = false, int muteGroup = 0,
+                          const std::vector<float>& waveform = {});
     void clearCustomSamples();
     std::vector<uint8_t> serializeState() const;
     bool deserializeState(const uint8_t* data, size_t size);
+
+    // Global Transpose (-24 to +24 semitones)
+    void setGlobalTranspose(float semitones) noexcept {
+        m_globalTranspose.store(std::clamp(semitones, -24.0f, 24.0f), std::memory_order_relaxed);
+    }
+    [[nodiscard]] float getGlobalTranspose() const noexcept {
+        return m_globalTranspose.load(std::memory_order_relaxed);
+    }
+
+    // Dynamic per-pad parameter editing
+    void setPadParam(int bankIndex, int padId, const std::string& param, float value);
+    void setPadLabel(int bankIndex, int padId, const std::string& label);
 
     // Chromatic mode settings
     void setChromaticMode(bool enabled, int rootBank = 0, int rootPad = 11) noexcept {
@@ -116,6 +133,10 @@ public:
     [[nodiscard]] bool isChromaticMode() const noexcept { return m_isChromatic.load(std::memory_order_relaxed); }
     [[nodiscard]] int getChromaticRootBank() const noexcept { return m_chromaticRootBank.load(std::memory_order_relaxed); }
     [[nodiscard]] int getChromaticRootPad() const noexcept { return m_chromaticRootPad.load(std::memory_order_relaxed); }
+
+    // Hold mode settings (latches pad playback continuously until tapped again or stopped)
+    void setHoldMode(bool enabled);
+    [[nodiscard]] bool isHoldMode() const noexcept { return m_isHold.load(std::memory_order_relaxed); }
 
     SP404PadData* getPad(int bankIndex, int padId);
     const SP404PadData* getPad(int bankIndex, int padId) const;
@@ -141,10 +162,12 @@ private:
 
     // Knobs & Master settings
     std::atomic<float> m_volume{8.5f}; // 0.0 to 10.0
-    std::atomic<float> m_ctrl1{6.5f};  // 0.0 to 10.0
-    std::atomic<float> m_ctrl2{4.0f};  // 0.0 to 10.0
-    std::atomic<float> m_ctrl3{8.0f};  // 0.0 to 10.0
-    std::atomic<int> m_activeMfx{static_cast<int>(SP404MFX::Vinyl)};
+    std::atomic<float> m_ctrl1{5.0f};  // 0.0 to 10.0
+    std::atomic<float> m_ctrl2{0.0f};  // 0.0 to 10.0 (Crackle OFF by default)
+    std::atomic<float> m_ctrl3{5.0f};  // 0.0 to 10.0
+    std::atomic<int> m_activeMfx{static_cast<int>(SP404MFX::Isolator)};
+    std::atomic<float> m_globalTranspose{0.0f}; // -24 to +24 semitones
+    std::atomic<bool> m_isHold{false}; // True SP-404 Hold latching
 
     std::atomic<bool> m_isChromatic{false};
     std::atomic<int> m_chromaticRootBank{0};
@@ -160,6 +183,23 @@ private:
     RBJBiquad m_isoMidL, m_isoMidR;
     RBJBiquad m_isoHighL, m_isoHighR;
     RBJBiquad m_filterL, m_filterR;
+    RBJBiquad m_tapeToneL, m_tapeToneR;
+
+    // DJFX Stutter Ring Buffers
+    std::vector<float> m_djfxBufL;
+    std::vector<float> m_djfxBufR;
+    size_t m_djfxWriteIdx{0};
+    double m_djfxReadIdx{0.0};
+    size_t m_djfxLoopLen{4800};
+
+    // Tape / Vinyl Modulation & Delay Buffers
+    std::vector<float> m_modDelayBufL;
+    std::vector<float> m_modDelayBufR;
+    size_t m_modDelayWriteIdx{0};
+    double m_tapeLfo1{0.0};
+    double m_tapeLfo2{0.0};
+    double m_vinylLfo{0.0};
+    uint32_t m_noiseRng{0x5EEDCAFE};
 };
 
 } // namespace johnwalls::johnwalls

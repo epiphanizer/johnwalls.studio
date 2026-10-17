@@ -13,9 +13,9 @@ interface AmpHeadProps {
   onSaveToLibrary?: (amp: PedalInstance) => void;
 }
 
-export const AmpHead: React.FC<AmpHeadProps> = (props) => {
+export const AmpHead: React.FC<AmpHeadProps> = React.memo((props) => {
   if (props.amp.type === 'vox') {
     return <VoxAC30Head {...props} />;
   }
   return <MesaMarkHead {...props} />;
-};
+});

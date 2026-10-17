@@ -13,7 +13,8 @@ JohnwallsStudioAudioProcessor::JohnwallsStudioAudioProcessor()
                          .withInput("Input", juce::AudioChannelSet::stereo(), true)
                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)
                          .withInput("Sidechain", juce::AudioChannelSet::stereo(), true)),
-      m_telemetryServer(*this, 3012)
+      m_telemetryServer(*this, 3012),
+      m_socketServer(*this, "/tmp/johnwalls.sock")
 {
     // Mesa Boogie Mark III parameters (Standby / Bypassed by default)
     addParameter(m_paramMesaPower = new juce::AudioParameterBool(
@@ -133,15 +134,20 @@ JohnwallsStudioAudioProcessor::JohnwallsStudioAudioProcessor()
 
     // Launch local telemetry server for external/desktop sync
     m_telemetryServer.start();
+    m_socketServer.start();
 
     // Off-thread publisher: session registry, reactive rule matching and OSC state stream.
     m_sessionWorker.startThread(juce::Thread::Priority::low);
+
+    // Asynchronously load Walls:Devine library samples directly from local disk in background
+    loadWallsDevinePresetSamplesAsync();
 }
 
 JohnwallsStudioAudioProcessor::~JohnwallsStudioAudioProcessor() {
     m_sessionWorker.stopThread(1000);
     GlobalSessionHub::getInstance().unregisterRecorder(m_instanceId);
     GlobalSessionHub::getInstance().unregister(m_instanceId);
+    m_socketServer.stop();
     m_telemetryServer.stop();
 }
 
@@ -162,7 +168,10 @@ void JohnwallsStudioAudioProcessor::releaseResources() {
 bool JohnwallsStudioAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
-    if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::stereo())
+    const auto mainInput = layouts.getMainInputChannelSet();
+    if (mainInput != juce::AudioChannelSet::stereo()
+        && mainInput != juce::AudioChannelSet::mono()
+        && mainInput != juce::AudioChannelSet::disabled())
         return false;
 
     auto sidechain = layouts.getChannelSet(true, 1);
@@ -329,13 +338,15 @@ void JohnwallsStudioAudioProcessor::processBlock(juce::AudioBuffer<float>& buffe
         auto sidechainBuffer = getBusBuffer(buffer, true, 1);
         if (sidechainBuffer.getNumChannels() >= 1) {
             float* const* scData = sidechainBuffer.getArrayOfWritePointers();
-            AudioBufferView scView(scData, static_cast<size_t>(sidechainBuffer.getNumChannels()), numSamples);
-            auto hits = m_extractor.processBlock(scView);
-            m_sidechainEnergy.store(hits.sidechainRMS, std::memory_order_relaxed);
+            if (scData != nullptr && scData[0] != nullptr) {
+                AudioBufferView scView(scData, static_cast<size_t>(sidechainBuffer.getNumChannels()), numSamples);
+                auto hits = m_extractor.processBlock(scView);
+                m_sidechainEnergy.store(hits.sidechainRMS, std::memory_order_relaxed);
 
-            if (hits.kickTriggered && rackLock.owns_lock()) {
-                if (auto* ducker = m_rack.getCachedDucker()) {
-                    ducker->trigger(hits.kickVelocity);
+                if (hits.kickTriggered && rackLock.owns_lock()) {
+                    if (auto* ducker = m_rack.getCachedDucker()) {
+                        ducker->trigger(hits.kickVelocity);
+                    }
                 }
             }
         }
@@ -965,6 +976,8 @@ juce::String JohnwallsStudioAudioProcessor::buildSP404NativeStateJson() const {
     state->setProperty("chromatic", engine.isChromaticMode());
     state->setProperty("chromaticRootBank", engine.getChromaticRootBank());
     state->setProperty("chromaticRootPad", engine.getChromaticRootPad());
+    state->setProperty("globalTranspose", engine.getGlobalTranspose());
+    state->setProperty("hold", engine.isHoldMode());
 
     juce::Array<juce::var> pads;
     for (int bank = 0; bank < static_cast<int>(SP404Engine::kNumBanks); ++bank) {
@@ -985,11 +998,83 @@ juce::String JohnwallsStudioAudioProcessor::buildSP404NativeStateJson() const {
             item->setProperty("mode", pad->isLoop ? "loop" : "oneshot");
             item->setProperty("reverse", pad->isReverse);
             item->setProperty("muteGroup", pad->muteGroup);
+            juce::Array<juce::var> wf;
+            for (float v : pad->waveform) wf.add(v);
+            item->setProperty("waveform", juce::var(wf));
             pads.add(juce::var(item));
         }
     }
     state->setProperty("pads", juce::var(pads));
     return juce::JSON::toString(juce::var(state));
+}
+
+void JohnwallsStudioAudioProcessor::loadWallsDevinePresetSamplesAsync() {
+    juce::Thread::launch([this]() {
+        juce::File dir("/Users/seanhalls/Desktop/sh/johnwalls_studio/ui/dist/audio/walls_devine");
+        if (!dir.isDirectory()) {
+            dir = juce::File("/Users/seanhalls/Desktop/sh/johnwalls_studio/ui/public/audio/walls_devine");
+        }
+        if (!dir.isDirectory()) {
+            dir = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Desktop/sh/johnwalls_studio/ui/dist/audio/walls_devine");
+        }
+        if (!dir.isDirectory()) {
+            dir = juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile("Desktop/sh/johnwalls_studio/ui/public/audio/walls_devine");
+        }
+        if (!dir.isDirectory()) return;
+
+        juce::WavAudioFormat wavFormat;
+        const char banks[] = {'A', 'B', 'C', 'D', 'E', 'F'};
+
+        for (int b = 0; b < 6; ++b) {
+            char bankChar = banks[b];
+            for (int p = 1; p <= 12; ++p) {
+                juce::String fileName = juce::String::charToString(bankChar) + (p < 10 ? "0" : "") + juce::String(p) + ".WAV";
+                juce::File file = dir.getChildFile(fileName);
+                if (!file.existsAsFile()) continue;
+
+                auto stream = file.createInputStream();
+                if (!stream) continue;
+
+                std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(stream.get(), false));
+                if (!reader || reader->lengthInSamples <= 0 || reader->lengthInSamples > 60 * 60 * 192000) continue;
+                stream.release(); // reader now owns stream
+
+                const int numChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
+                const int numSamples = static_cast<int>(reader->lengthInSamples);
+                juce::AudioBuffer<float> sampleBuf(numChannels, numSamples);
+                if (!reader->read(&sampleBuf, 0, numSamples, 0, true, numChannels > 1)) continue;
+
+                const float* left = sampleBuf.getReadPointer(0);
+                const float* right = numChannels > 1 ? sampleBuf.getReadPointer(1) : nullptr;
+
+                // Extract 32-sample waveform profile
+                std::vector<float> waveform(32, 0.0f);
+                int blockSize = std::max(1, numSamples / 32);
+                for (int w = 0; w < 32; ++w) {
+                    float peak = 0.0f;
+                    int start = w * blockSize;
+                    int end = std::min(numSamples, start + blockSize);
+                    for (int s = start; s < end; ++s) {
+                        float v = std::abs(left[s]);
+                        if (v > peak) peak = v;
+                    }
+                    waveform[w] = std::min(1.0f, peak);
+                }
+
+                auto* pad = m_sp404Engine.getPad(b, p);
+                std::string label = (pad && !pad->label.empty() && pad->label != "EMPTY") ? pad->label : fileName.upToLastOccurrenceOf(".", false, false).toStdString();
+                bool isLoop = pad ? pad->isLoop : false;
+                int muteGroup = pad ? pad->muteGroup : 0;
+
+                m_sp404Engine.loadCustomSample(
+                    b, p, left, right,
+                    static_cast<size_t>(numSamples),
+                    static_cast<float>(reader->sampleRate),
+                    label, 0.0f, 1.0f, 0.0f, isLoop, false, muteGroup, waveform
+                );
+            }
+        }
+    });
 }
 
 } // namespace johnwalls::johnwalls

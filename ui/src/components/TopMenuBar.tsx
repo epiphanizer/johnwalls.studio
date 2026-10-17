@@ -49,6 +49,9 @@ interface TopMenuBarProps {
   onOpenRoutingModal?: () => void;
   onOpenCaptureDispatch?: () => void;
   onOpenVisualizer?: () => void;
+  onOpenPalette?: () => void;
+  onToggleCopilot?: () => void;
+  isCopilotOpen?: boolean;
 }
 
 export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
@@ -75,7 +78,10 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
   onOpenPedalLibrary,
   onOpenRoutingModal,
   onOpenCaptureDispatch,
-  onOpenVisualizer
+  onOpenVisualizer,
+  onOpenPalette,
+  onToggleCopilot,
+  isCopilotOpen = false
 }) => {
   const [openMenu, setOpenMenu] = useState<'library' | 'routing' | 'inspect' | 'sensors' | 'supercollider' | null>(null);
   const [savePatchName, setSavePatchName] = useState('');
@@ -653,6 +659,36 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
           <Terminal size={12} />
           <span>CLI</span>
         </button>
+
+        {/* Global Command Palette (Cmd+K) */}
+        {onOpenPalette && (
+          <button
+            type="button"
+            onClick={onOpenPalette}
+            className="px-2 py-1 rounded flex items-center gap-1 transition text-[11px] bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/50"
+            title="Open Command Palette (Cmd+K or ~)"
+          >
+            <Sparkles size={11} className="text-amber-400" />
+            <span className="font-mono text-[10px]">Cmd+K</span>
+          </button>
+        )}
+
+        {/* AI Copilot Drawer Toggle */}
+        {onToggleCopilot && (
+          <button
+            type="button"
+            onClick={onToggleCopilot}
+            className={`px-2 py-1 rounded flex items-center gap-1 transition text-[11px] font-bold ${
+              isCopilotOpen
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-sm'
+                : 'text-slate-400 hover:text-amber-300 hover:bg-slate-800/60'
+            }`}
+            title="Toggle AI Copilot Drawer"
+          >
+            <Sparkles size={12} className={isCopilotOpen ? 'animate-pulse text-amber-400' : ''} />
+            <span>Copilot</span>
+          </button>
+        )}
 
         {/* SuperCollider Engine & Visualizer Pill */}
         <div className="relative">

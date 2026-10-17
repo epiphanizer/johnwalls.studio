@@ -56,7 +56,7 @@ function getMidiNoteName(noteNum?: number): string {
   return `${note}${octave}`;
 }
 
-export const StateWorkstation: React.FC<StateWorkstationProps> = ({
+export const StateWorkstation: React.FC<StateWorkstationProps> = React.memo(({
   telemetry,
   logs = [],
   onExecuteCommand,
@@ -612,4 +612,4 @@ export const StateWorkstation: React.FC<StateWorkstationProps> = ({
       </form>
     </div>
   );
-};
+});

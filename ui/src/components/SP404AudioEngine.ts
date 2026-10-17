@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { audioBufferToWav, extractWaveformProfile } from '../utils/wavEncoder';
-import { generateDefaultSample } from '../utils/sp404DefaultSamples';
+import { generateDefaultSample, generateWallsDevineSample } from '../utils/sp404DefaultSamples';
 import { getSharedAudioContext } from '../utils/sharedAudioContext';
 import { getTelemetryUrl, hasJuceNativeHost } from '../utils/nativeTransport';
 import {
@@ -8,10 +8,13 @@ import {
   listSP404Libraries,
   loadSP404Library,
   saveSP404Library,
+  renameSP404Library,
   SP404_LEGACY_BANKS,
   SP404_LEGACY_PROFILE,
   getSP404Profile,
   isSP404HardwareProfile,
+  WALLS_DEVINE_VOL1_ID,
+  getWallsDevineVol1Manifest,
   type SP404HardwareProfile,
   type SP404HardwareProfileId,
   type SP404LibraryManifest
@@ -37,6 +40,8 @@ export interface SP404Pad {
   muteGroup: number; // 0 = off, 1 = choke group
   isHit: boolean;
   isRecordingTarget?: boolean;
+  /** Cached reversed AudioBuffer to prevent redundant memory re-allocations on pad trigger. */
+  reversedBuffer?: AudioBuffer | null;
   /** True when the restored native sampler has a sample even if the browser has no audio asset. */
   nativeSampleAvailable?: boolean;
 }
@@ -55,6 +60,7 @@ export interface NativeSP404PadState {
   mode: 'oneshot' | 'gate' | 'loop';
   reverse: boolean;
   muteGroup: number;
+  waveform?: number[];
 }
 
 export interface NativeSP404State {
@@ -70,6 +76,8 @@ export interface NativeSP404State {
   chromatic: boolean;
   chromaticRootBank: number;
   chromaticRootPad: number;
+  globalTranspose?: number;
+  hold?: boolean;
   pads: NativeSP404PadState[];
 }
 
@@ -86,8 +94,11 @@ export interface SP404TransferProgress {
 export interface ActiveVoice {
   source: AudioBufferSourceNode;
   gain: GainNode;
+  panner?: StereoPannerNode;
   padKey: string;
   muteGroup: number;
+  startedAt?: number;
+  isHoldLooped?: boolean;
 }
 
 function sendToHost(eventName: string, payload: any, fallbackHttpUrl?: string, httpBody?: any) {
@@ -156,8 +167,10 @@ export class SP404AudioEngine {
   private filterNode: BiquadFilterNode | null = null;
   private driveNode: WaveShaperNode | null = null;
 
-  // Active playing voices
+  // Active playing voices & pad tracking
   private activeVoices: Map<string, ActiveVoice[]> = new Map();
+  private activePlayingPads: Set<string> = new Set();
+  private padStopTimers: Map<string, number> = new Map();
 
   // Legacy SP-404 profile: 10 banks A-J with 12 pads each.
   private banks: Record<BankLetter, SP404Pad[]>;
@@ -166,11 +179,12 @@ export class SP404AudioEngine {
   // Global Sampler Settings
   private globalTranspose: number = 0; // Semitones
   private masterVolume: number = 8.5;
-  private activeMFX: MFXType = 'vinyl';
-  private ctrl1: number = 6.5;
-  private ctrl2: number = 4.0;
-  private ctrl3: number = 8.0;
+  private activeMFX: MFXType = 'isolator';
+  private ctrl1: number = 5.0;
+  private ctrl2: number = 0.0;
+  private ctrl3: number = 5.0;
   private isVinyl33: boolean = true;
+  private isHoldMode: boolean = false;
 
   // Chromatic Mode State
   private isChromaticMode: boolean = false;
@@ -199,6 +213,8 @@ export class SP404AudioEngine {
   private transferController = new AbortController();
   private hasReceivedNativeState = false;
   private lastNativeStateSignature = '';
+  private syncQueue: Promise<void> = Promise.resolve();
+  private populatedBanks = new Set<BankLetter>();
 
   constructor() {
     this.banks = this.createInitialBanks();
@@ -246,6 +262,12 @@ export class SP404AudioEngine {
     this.ctrl2 = Number.isFinite(state.ctrl2) ? state.ctrl2 : this.ctrl2;
     this.ctrl3 = Number.isFinite(state.ctrl3) ? state.ctrl3 : this.ctrl3;
     this.isChromaticMode = Boolean(state.chromatic);
+    if (typeof state.hold === 'boolean') {
+      this.isHoldMode = state.hold;
+    }
+    if (typeof state.globalTranspose === 'number' && Number.isFinite(state.globalTranspose)) {
+      this.globalTranspose = state.globalTranspose;
+    }
     this.chromaticRootPad = {
       bank: SP404_LEGACY_BANKS[Math.max(0, Math.min(SP404_LEGACY_BANKS.length - 1, state.chromaticRootBank))],
       padId: Math.max(1, Math.min(SP404_LEGACY_PROFILE.padsPerBank, state.chromaticRootPad))
@@ -266,9 +288,8 @@ export class SP404AudioEngine {
       pad.reverse = nativePad.reverse;
       pad.muteGroup = nativePad.muteGroup;
       pad.nativeSampleAvailable = nativePad.hasSample;
-      if (!this.hasReceivedNativeState && !nativePad.hasSample) {
-        pad.audioBuffer = null;
-        pad.waveform = [];
+      if (Array.isArray(nativePad.waveform) && nativePad.waveform.length > 0) {
+        pad.waveform = nativePad.waveform;
       }
     }
     this.hasReceivedNativeState = true;
@@ -286,30 +307,12 @@ export class SP404AudioEngine {
   private createInitialBanks(): Record<BankLetter, SP404Pad[]> {
     const letters: BankLetter[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     const result = {} as Record<BankLetter, SP404Pad[]>;
-
-    const defaultLabelsBankA = [
-      { id: 1, label: 'KICK 01', category: 'kick', type: 'kick' },
-      { id: 2, label: 'KICK 808', category: 'kick', type: 'kick' },
-      { id: 3, label: 'CLAP CRISP', category: 'snare', type: 'clap' },
-      { id: 4, label: 'SNARE 90s', category: 'snare', type: 'snare' },
-      { id: 5, label: 'CH CLOSED', category: 'hat', type: 'hat_closed', muteGroup: 1 },
-      { id: 6, label: 'OH SIZZLE', category: 'hat', type: 'hat_open', muteGroup: 1 },
-      { id: 7, label: 'TAMB SHAKE', category: 'perc', type: 'perc' },
-      { id: 8, label: 'RIM CLICK', category: 'perc', type: 'perc' },
-      { id: 9, label: 'VOX CHOP A', category: 'vox', type: 'vox' },
-      { id: 10, label: 'VOX CHOP B', category: 'vox', type: 'vox' },
-      { id: 11, label: 'JAZZ RHODES', category: 'sample', type: 'rhodes' },
-      { id: 12, label: 'LOFI CHORD', category: 'sample', type: 'rhodes' },
-      { id: 13, label: '808 SUB SLIDE', category: 'bass', type: 'bass' },
-      { id: 14, label: 'UPRIGHT BASS', category: 'bass', type: 'bass' },
-      { id: 15, label: 'VINYL CRACKLE', category: 'fx', type: 'vinyl' },
-      { id: 16, label: 'REVERSE TAPE', category: 'fx', type: 'reverse' }
-    ];
+    const defaultManifest = getWallsDevineVol1Manifest();
 
     for (const letter of letters) {
       result[letter] = Array.from({ length: SP404_LEGACY_PROFILE.padsPerBank }, (_, idx) => {
         const padId = idx + 1;
-        const preset = letter === 'A' ? defaultLabelsBankA[idx] : null;
+        const preset = defaultManifest.pads.find((p) => p.bank === letter && p.padId === padId);
 
         return {
           id: padId,
@@ -319,12 +322,12 @@ export class SP404AudioEngine {
           audioBuffer: null,
           waveform: [],
           duration: 0,
-          sampleRate: 48000,
-          pitch: 0,
-          volume: 1.0,
-          pan: 0,
-          mode: 'oneshot',
-          reverse: false,
+          sampleRate: 44100,
+          pitch: preset?.pitch ?? 0,
+          volume: preset?.volume ?? 1.0,
+          pan: preset?.pan ?? 0,
+          mode: preset?.mode ?? 'oneshot',
+          reverse: preset?.reverse ?? false,
           muteGroup: preset?.muteGroup ?? 0,
           isHit: false
         };
@@ -340,6 +343,46 @@ export class SP404AudioEngine {
 
   public getAudioContext(): AudioContext | null {
     return this.ctx;
+  }
+
+  public setHoldMode(enabled: boolean) {
+    this.isHoldMode = enabled;
+    sendToHost(
+      'sp404SetHold',
+      { hold: enabled, value: enabled, enabled },
+      getTelemetryUrl('/sp404/hold'),
+      { hold: enabled, value: enabled, enabled }
+    );
+    sendToHost(
+      'sp404SetParam',
+      { param: 'hold', value: enabled ? 1.0 : 0.0 },
+      getTelemetryUrl('/sp404/param')
+    );
+    if (!enabled) {
+      for (const [key, voices] of this.activeVoices.entries()) {
+        const [b, pStr] = key.split('_');
+        const pad = this.getPad(b as BankLetter, parseInt(pStr, 10));
+        if (pad && pad.mode !== 'loop') {
+          voices.forEach((v) => {
+            try {
+              v.source.loop = false;
+            } catch {}
+          });
+        }
+      }
+    }
+    this.onStateChange?.();
+  }
+
+  public getIsHoldMode(): boolean {
+    return this.isHoldMode;
+  }
+
+  public isPadPlaying(bank: BankLetter, padId: number): boolean {
+    const padKey = `${bank}_${padId}`;
+    if (this.activePlayingPads.has(padKey)) return true;
+    const voices = this.activeVoices.get(padKey);
+    return Boolean(voices && voices.length > 0);
   }
 
   public async initAudio(existingContext?: AudioContext): Promise<boolean> {
@@ -414,8 +457,8 @@ export class SP404AudioEngine {
       this.driveNode.connect(this.mfxOutputGain);
       this.mfxOutputGain.connect(this.masterGain);
 
-      // Synthesize Bank A default audio buffers if not already populated
-      this.populateDefaultBankA();
+      // Populate active Bank A with Walls:Devine procedural audio & fetch master WAVs
+      this.populateBank('A');
 
       this.isInitialized = true;
       this.onStateChange?.();
@@ -426,27 +469,45 @@ export class SP404AudioEngine {
     }
   }
 
-  private populateDefaultBankA() {
-    // A native project is authoritative. Do not repopulate browser demo
-    // samples after the native sampler has hydrated the page.
-    if (!this.ctx || this.hasReceivedNativeState) return;
-    const bankA = this.banks['A'];
+  public ensureBankLoaded(bankLetter: BankLetter) {
+    if (!this.ctx || this.populatedBanks.has(bankLetter)) return;
+    this.populateBank(bankLetter);
+  }
 
-    const types = [
-      'kick_01', 'kick_808', 'clap', 'snare',
-      'hat_closed', 'hat_open', 'tamb', 'rim',
-      'vox_a', 'vox_b', 'rhodes_jazz', 'rhodes_lofi',
-      'bass_808', 'bass_upright', 'vinyl', 'reverse'
-    ];
+  private populateBank(bankLetter: BankLetter) {
+    if (!this.ctx || this.populatedBanks.has(bankLetter)) return;
+    this.populatedBanks.add(bankLetter);
+
+    const bankPads = this.banks[bankLetter];
+    if (!bankPads) return;
 
     for (let i = 0; i < SP404_LEGACY_PROFILE.padsPerBank; i++) {
-      if (!bankA[i].audioBuffer) {
-        const buffer = generateDefaultSample(this.ctx, types[i]);
-        bankA[i].audioBuffer = buffer;
-        bankA[i].duration = buffer.duration;
-        bankA[i].waveform = extractWaveformProfile(buffer, 32);
+      const pad = bankPads[i];
+      if (!pad.audioBuffer) {
+        // Fast procedural fallback so pad is immediately playable without waiting
+        const buffer = generateWallsDevineSample(this.ctx, bankLetter, pad.id);
+        pad.audioBuffer = buffer;
+        pad.duration = buffer.duration;
+        pad.sampleRate = buffer.sampleRate;
+        pad.waveform = extractWaveformProfile(buffer, 32);
+
+        const sampleFilename = `${bankLetter}${pad.id.toString().padStart(2, '0')}.WAV`;
+
+        if (hasJuceNativeHost()) {
+          pad.nativeSampleAvailable = true;
+          continue;
+        }
+
+        // In pure browser demo mode: keep lightweight synthesized buffer
+        this.onStateChange?.();
       }
     }
+  }
+
+  private queueSyncPadToHost(bank: BankLetter, pad: SP404Pad) {
+    this.syncQueue = this.syncQueue.then(() => this.syncPadToHost(bank, pad)).catch((err) => {
+      console.warn('Queued pad sync error:', err);
+    });
   }
 
   private createDistortionCurve(amount: number): any {
@@ -459,6 +520,28 @@ export class SP404AudioEngine {
       curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
     }
     return curve;
+  }
+
+  private disconnectVoice(v: ActiveVoice) {
+    try {
+      v.source.onended = null;
+      v.source.disconnect();
+    } catch {}
+    try {
+      v.gain.disconnect();
+    } catch {}
+    if (v.panner) {
+      try {
+        v.panner.disconnect();
+      } catch {}
+    }
+  }
+
+  private getOrCreateReversedBuffer(pad: SP404Pad): AudioBuffer | null {
+    if (!pad.audioBuffer || !this.ctx) return pad.audioBuffer;
+    if (pad.reversedBuffer) return pad.reversedBuffer;
+    pad.reversedBuffer = this.createReversedBuffer(pad.audioBuffer);
+    return pad.reversedBuffer;
   }
 
   // --- Pad Triggering & Transposition ---
@@ -481,6 +564,52 @@ export class SP404AudioEngine {
       effectivePitch = (padId - 1) - 12;
     }
 
+    const pad = this.getPad(targetBank, targetPadId);
+    const padKey = `${bank}_${padId}`;
+    const isCurrentlyActive = this.activePlayingPads.has(padKey);
+
+    // If hold mode is active or pad is in loop mode, tapping an already playing pad toggles it off!
+    if (this.isHoldMode || pad?.mode === 'loop') {
+      if (isCurrentlyActive) {
+        // Toggle OFF!
+        this.activePlayingPads.delete(padKey);
+        const timer = this.padStopTimers.get(padKey);
+        if (timer) {
+          window.clearTimeout(timer);
+          this.padStopTimers.delete(padKey);
+        }
+
+        // Notify C++ VST engine (which toggles voice off)
+        sendToHost(
+          'sp404TriggerPad',
+          {
+            bank,
+            padId,
+            chromaticOffset: effectivePitch,
+            velocity: velocity ?? 1.0
+          },
+          getTelemetryUrl('/sp404/trigger')
+        );
+
+        // Disconnect Web Audio voice if running in browser
+        const existingVoices = this.activeVoices.get(padKey);
+        if (existingVoices && existingVoices.length > 0) {
+          existingVoices.forEach((v) => {
+            try {
+              v.gain.gain.setTargetAtTime(0.001, this.ctx!.currentTime, 0.02);
+              v.source.stop(this.ctx!.currentTime + 0.025);
+              setTimeout(() => this.disconnectVoice(v), 40);
+            } catch {
+              this.disconnectVoice(v);
+            }
+          });
+          this.activeVoices.delete(padKey);
+        }
+        this.onStateChange?.();
+        return;
+      }
+    }
+
     // Always notify native C++ VST sampler engine directly for Ableton Live audio output
     sendToHost(
       'sp404TriggerPad',
@@ -493,6 +622,31 @@ export class SP404AudioEngine {
       getTelemetryUrl('/sp404/trigger')
     );
 
+    // Visual feedback & active pad tracking
+    this.flashPad(bank, padId);
+    this.activePlayingPads.add(padKey);
+
+    // If not looping and not held, auto-unlight after sample duration
+    if (!this.isHoldMode && pad?.mode !== 'loop') {
+      const existingTimer = this.padStopTimers.get(padKey);
+      if (existingTimer) window.clearTimeout(existingTimer);
+      const durMs = Math.max(250, (pad?.duration || 1.2) * 1000);
+      const timer = window.setTimeout(() => {
+        this.activePlayingPads.delete(padKey);
+        this.padStopTimers.delete(padKey);
+        this.onStateChange?.();
+      }, durMs);
+      this.padStopTimers.set(padKey, timer);
+    }
+
+    // When running inside native VST / JUCE plugin host:
+    // C++ SP404Engine renders audio directly into Ableton Live's audio thread.
+    // Do NOT duplicate audio playback in Web Audio!
+    if (hasJuceNativeHost()) {
+      this.onStateChange?.();
+      return;
+    }
+
     if (!this.ctx) {
       this.initAudio().then(() => this.triggerPad(bank, padId, chromaticSemitoneOffset, velocity));
       return;
@@ -502,11 +656,22 @@ export class SP404AudioEngine {
       this.ctx.resume().catch(() => {});
     }
 
-    const pad = this.getPad(targetBank, targetPadId);
     if (!pad) return;
 
-    if (!pad.audioBuffer && targetBank === 'A' && !this.hasReceivedNativeState) {
-      this.populateDefaultBankA();
+    if (!pad.audioBuffer) {
+      if (['A', 'B', 'C', 'D', 'E', 'F'].includes(targetBank)) {
+        const buffer = generateWallsDevineSample(this.ctx, targetBank, targetPadId);
+        pad.audioBuffer = buffer;
+        pad.duration = buffer.duration;
+        pad.sampleRate = buffer.sampleRate;
+        pad.waveform = extractWaveformProfile(buffer, 32);
+      } else {
+        const buffer = generateDefaultSample(this.ctx, pad.category || 'kick');
+        pad.audioBuffer = buffer;
+        pad.duration = buffer.duration;
+        pad.sampleRate = buffer.sampleRate;
+        pad.waveform = extractWaveformProfile(buffer, 32);
+      }
     }
     if (!pad.audioBuffer) return;
 
@@ -522,7 +687,10 @@ export class SP404AudioEngine {
             try {
               v.gain.gain.setTargetAtTime(0.001, this.ctx!.currentTime, 0.015);
               v.source.stop(this.ctx!.currentTime + 0.02);
-            } catch {}
+              setTimeout(() => this.disconnectVoice(v), 30);
+            } catch {
+              this.disconnectVoice(v);
+            }
           });
           this.activeVoices.delete(key);
         }
@@ -532,18 +700,22 @@ export class SP404AudioEngine {
     // Prepare buffer source
     let sourceBuffer = pad.audioBuffer;
     if (pad.reverse) {
-      sourceBuffer = this.createReversedBuffer(pad.audioBuffer);
+      sourceBuffer = this.getOrCreateReversedBuffer(pad) || pad.audioBuffer;
     }
 
     const source = this.ctx.createBufferSource();
     source.buffer = sourceBuffer;
 
     // Pitch & Transpose calculation
-    const totalSemitones = this.globalTranspose + pad.pitch + effectivePitch;
+    let mfxPitchOffset = 0;
+    if (this.activeMFX === 'pitch') {
+      mfxPitchOffset = ((this.ctrl1 - 5) / 5) * 12 + ((this.ctrl2 - 5) / 5) * 1.0;
+    }
+    const totalSemitones = this.globalTranspose + pad.pitch + effectivePitch + mfxPitchOffset;
     const playbackRate = Math.pow(2, totalSemitones / 12);
     source.playbackRate.setValueAtTime(playbackRate, this.ctx.currentTime);
 
-    if (pad.mode === 'loop') {
+    if (pad.mode === 'loop' || this.isHoldMode) {
       source.loop = true;
     }
 
@@ -567,14 +739,22 @@ export class SP404AudioEngine {
     }
 
     // Voice tracking
-    const padKey = `${bank}_${padId}`;
     if (!this.activeVoices.has(padKey)) {
       this.activeVoices.set(padKey, []);
     }
-    const voiceObj: ActiveVoice = { source, gain: voiceGain, padKey, muteGroup: pad.muteGroup };
+    const voiceObj: ActiveVoice = {
+      source,
+      gain: voiceGain,
+      panner,
+      padKey,
+      muteGroup: pad.muteGroup,
+      startedAt: this.ctx.currentTime,
+      isHoldLooped: this.isHoldMode && pad.mode !== 'loop'
+    };
     this.activeVoices.get(padKey)!.push(voiceObj);
 
     source.onended = () => {
+      this.disconnectVoice(voiceObj);
       const arr = this.activeVoices.get(padKey);
       if (arr) {
         const filtered = arr.filter((v) => v !== voiceObj);
@@ -584,9 +764,11 @@ export class SP404AudioEngine {
           this.activeVoices.delete(padKey);
         }
       }
+      this.onStateChange?.();
     };
 
     source.start(this.ctx.currentTime);
+    this.onStateChange?.();
   }
 
   public releasePad(bank: BankLetter, padId: number) {
@@ -596,22 +778,36 @@ export class SP404AudioEngine {
       getTelemetryUrl('/sp404/release')
     );
 
-    if (!this.ctx) return;
-    const pad = this.getPad(bank, padId);
-    if (!pad) return;
+    // If hold mode is active, do not stop on release (pad is latched)
+    if (this.isHoldMode) return;
 
-    if (pad.mode === 'gate') {
-      const padKey = `${bank}_${padId}`;
-      const voices = this.activeVoices.get(padKey);
-      if (voices) {
-        voices.forEach((v) => {
-          try {
-            v.gain.gain.setTargetAtTime(0.001, this.ctx!.currentTime, 0.03);
-            v.source.stop(this.ctx!.currentTime + 0.04);
-          } catch {}
-        });
-        this.activeVoices.delete(padKey);
+    const pad = this.getPad(bank, padId);
+    const padKey = `${bank}_${padId}`;
+
+    if (pad?.mode === 'gate') {
+      this.activePlayingPads.delete(padKey);
+      const timer = this.padStopTimers.get(padKey);
+      if (timer) {
+        window.clearTimeout(timer);
+        this.padStopTimers.delete(padKey);
       }
+
+      if (this.ctx) {
+        const voices = this.activeVoices.get(padKey);
+        if (voices) {
+          voices.forEach((v) => {
+            try {
+              v.gain.gain.setTargetAtTime(0.001, this.ctx!.currentTime, 0.03);
+              v.source.stop(this.ctx!.currentTime + 0.04);
+              setTimeout(() => this.disconnectVoice(v), 50);
+            } catch {
+              this.disconnectVoice(v);
+            }
+          });
+          this.activeVoices.delete(padKey);
+        }
+      }
+      this.onStateChange?.();
     }
   }
 
@@ -627,16 +823,27 @@ export class SP404AudioEngine {
       getTelemetryUrl('/sp404/param')
     );
 
-    if (!this.ctx) return;
+    for (const timer of this.padStopTimers.values()) {
+      window.clearTimeout(timer);
+    }
+    this.padStopTimers.clear();
+    this.activePlayingPads.clear();
+
+    if (!this.ctx) {
+      this.onStateChange?.();
+      return;
+    }
     for (const [key, voices] of this.activeVoices.entries()) {
       voices.forEach((v) => {
         try {
           v.gain.gain.setValueAtTime(0, this.ctx!.currentTime);
           v.source.stop();
         } catch {}
+        this.disconnectVoice(v);
       });
     }
     this.activeVoices.clear();
+    this.onStateChange?.();
   }
 
   private createReversedBuffer(src: AudioBuffer): AudioBuffer {
@@ -711,26 +918,14 @@ export class SP404AudioEngine {
       this.recordMuteNode.connect(this.ctx!.destination);
 
       if (mode === 'resample') {
-        // Tap straight from master sampler output
+        // Tap master sampler output (post-MFX)
         this.masterGain?.connect(this.recordProcessor);
       } else {
-        // Capture live physical / virtual line input from Ableton or user media
-        try {
-          if (!this.recordMediaStream) {
-            this.recordMediaStream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-              },
-              video: false
-            });
-          }
-          this.recordInputNode = this.ctx!.createMediaStreamSource(this.recordMediaStream);
-          this.recordInputNode.connect(this.recordProcessor);
-        } catch (streamErr) {
-          console.warn('Microphone permission fallback: tapping internal audio bus', streamErr);
-          this.masterGain?.connect(this.recordProcessor);
+        // EXT IN: Catch the live audio stream from Ableton (pre-MFX), never requesting microphone permissions
+        if (this.mfxInputGain) {
+          this.mfxInputGain.connect(this.recordProcessor);
+        } else if (this.masterGain) {
+          this.masterGain.connect(this.recordProcessor);
         }
       }
 
@@ -816,9 +1011,14 @@ export class SP404AudioEngine {
       offset += cL.length;
     }
 
+    // Release raw recording chunks to prevent memory retention
+    this.recordedChunksL = [];
+    this.recordedChunksR = [];
+
     // Assign to target pad
     const pad = this.getPad(this.targetRecordBank, this.targetRecordPadId);
     if (pad) {
+      pad.reversedBuffer = null;
       pad.audioBuffer = finalBuffer;
       pad.duration = finalBuffer.duration;
       pad.waveform = extractWaveformProfile(finalBuffer, 32);
@@ -856,9 +1056,9 @@ export class SP404AudioEngine {
         continue;
       }
 
-      // Accept both user-library names (A_01.WAV) and Roland card names
-      // (A0000001.WAV / A0000012.WAV). Card imports are ordered by filename.
-      const match = name.match(/^(?:SMPL_)?([A-J])[_-]?0*([0-9]{1,2})\.(WAV|AIFF|AIF)$/i);
+      // Accept user-library names (A_01.WAV), Roland card names (A0000001.WAV),
+      // and tagged set names (A01_Decay_Kick.WAV, A01_A_Decay_Kick.WAV).
+      const match = name.match(/^(?:SMPL_)?([A-J])[_-]?0*([0-9]{1,2})(?:[_-].*)?\.(WAV|AIFF|AIF)$/i);
       let targetBank: BankLetter = 'A';
       let targetPadId = 1;
 
@@ -898,6 +1098,39 @@ export class SP404AudioEngine {
 
     this.onStateChange?.();
     return { loadedCount: count };
+  }
+
+  public async loadSampleBase64(
+    bank: BankLetter,
+    padId: number,
+    base64Wav: string,
+    label: string
+  ): Promise<boolean> {
+    await this.initAudio();
+    if (!this.ctx) return false;
+    try {
+      const binaryString = atob(base64Wav);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const decoded = await this.ctx.decodeAudioData(bytes.buffer.slice(0));
+      const pad = this.getPad(bank, padId);
+      if (pad) {
+        pad.audioBuffer = decoded;
+        pad.duration = decoded.duration;
+        pad.waveform = extractWaveformProfile(decoded, 32);
+        pad.label = label.slice(0, 14);
+        pad.nativeSampleAvailable = true;
+        await this.syncPadToHost(bank, pad);
+        this.onStateChange?.();
+        return true;
+      }
+    } catch (err) {
+      console.warn(`Failed to decode base64 sample for pad ${bank}${padId}:`, err);
+    }
+    return false;
   }
 
   /**
@@ -1021,12 +1254,14 @@ export class SP404AudioEngine {
     }
   }
 
-  public async saveLibrary(name: string, profile: SP404HardwareProfile = this.hardwareProfile): Promise<SP404LibraryManifest> {
+  public async saveLibrary(name: string, profile: SP404HardwareProfile = this.hardwareProfile, existingId?: string): Promise<SP404LibraryManifest> {
     const now = new Date().toISOString();
+    const isUpdate = Boolean(existingId && existingId !== WALLS_DEVINE_VOL1_ID);
+    const id = isUpdate ? existingId! : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `set-${Date.now()}`);
     const manifest: SP404LibraryManifest = {
       format: 'johnwalls-sp404-library',
       version: 2,
-      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `set-${Date.now()}`,
+      id,
       name: name.trim() || 'Untitled SP-404 Set',
       createdAt: now,
       updatedAt: now,
@@ -1071,6 +1306,10 @@ export class SP404AudioEngine {
 
     await saveSP404Library({ manifest, assets });
     return manifest;
+  }
+
+  public async renameLibrary(id: string, newName: string): Promise<SP404LibraryManifest | null> {
+    return renameSP404Library(id, newName);
   }
 
   public async listLibraries(): Promise<SP404LibraryManifest[]> {
@@ -1126,6 +1365,34 @@ export class SP404AudioEngine {
     const stored = await loadSP404Library(id);
     if (!stored || !isSP404HardwareProfile(stored.manifest.hardware)) return false;
     this.hardwareProfile = getSP404Profile(stored.manifest.hardware.id);
+    if (hasJuceNativeHost()) {
+      // In native VST/AU plugin mode, C++ SP404Engine is master and loads audio directly from disk.
+      // Bypass Web Audio decoding and base64 IPC chunking completely.
+      for (const item of stored.manifest.pads) {
+        const pad = this.getPad(item.bank, item.padId);
+        if (!pad) continue;
+        pad.label = item.label;
+        pad.category = item.category as SP404Pad['category'];
+        pad.pitch = item.pitch;
+        pad.volume = item.volume;
+        pad.pan = item.pan;
+        pad.mode = item.mode;
+        pad.reverse = item.reverse;
+        pad.muteGroup = item.muteGroup;
+        pad.nativeSampleAvailable = true;
+      }
+      const settings = stored.manifest.settings;
+      this.setVolume(settings.volume);
+      this.setMFXType(settings.activeMFX as MFXType);
+      this.setCtrl1(settings.ctrl1);
+      this.setCtrl2(settings.ctrl2);
+      this.setCtrl3(settings.ctrl3);
+      this.setGlobalTranspose(settings.globalTranspose);
+      this.setChromaticMode(settings.isChromaticMode, settings.chromaticRootPad.bank, settings.chromaticRootPad.padId);
+      this.onStateChange?.();
+      return true;
+    }
+
     await this.initAudio();
     this.clearNativeSamples();
 
@@ -1147,10 +1414,17 @@ export class SP404AudioEngine {
         pad.sampleRate = pad.audioBuffer.sampleRate;
         pad.waveform = extractWaveformProfile(pad.audioBuffer, 32);
         await this.syncPadToHost(item.bank, pad);
-      } else {
-        pad.audioBuffer = null;
-        pad.duration = 0;
-        pad.waveform = [];
+      } else if (this.ctx && ['A', 'B', 'C', 'D', 'E', 'F'].includes(item.bank)) {
+        // Synthesize authentic model immediately so pad is never silent
+        pad.audioBuffer = generateWallsDevineSample(this.ctx, item.bank, item.padId);
+        pad.duration = pad.audioBuffer.duration;
+        pad.sampleRate = pad.audioBuffer.sampleRate;
+        pad.waveform = extractWaveformProfile(pad.audioBuffer, 32);
+      } else if (this.ctx) {
+        pad.audioBuffer = generateDefaultSample(this.ctx, item.category || 'kick');
+        pad.duration = pad.audioBuffer.duration;
+        pad.sampleRate = pad.audioBuffer.sampleRate;
+        pad.waveform = extractWaveformProfile(pad.audioBuffer, 32);
       }
     }
 
@@ -1228,6 +1502,67 @@ export class SP404AudioEngine {
 
   public setGlobalTranspose(semitones: number) {
     this.globalTranspose = Math.max(-24, Math.min(24, semitones));
+    sendToHost(
+      'sp404SetTranspose',
+      { transpose: this.globalTranspose },
+      getTelemetryUrl('/sp404/transpose')
+    );
+    sendToHost(
+      'sp404SetParam',
+      { param: 'globalTranspose', value: this.globalTranspose },
+      getTelemetryUrl('/sp404/param')
+    );
+    this.onStateChange?.();
+  }
+
+  public setPadLabel(bank: BankLetter, padId: number, label: string) {
+    const pad = this.getPad(bank, padId);
+    if (!pad) return;
+
+    pad.label = label;
+    sendToHost(
+      'sp404SetPadLabel',
+      { bank, padId, label, value: label },
+      getTelemetryUrl('/sp404/pad/label')
+    );
+    this.onStateChange?.();
+  }
+
+  public setPadParam(bank: BankLetter, padId: number, param: string, value: number | string | boolean) {
+    const pad = this.getPad(bank, padId);
+    if (!pad) return;
+
+    if (param === 'label') {
+      this.setPadLabel(bank, padId, String(value));
+      return;
+    }
+
+    let numVal = 0;
+    if (param === 'pitch') {
+      pad.pitch = typeof value === 'number' ? Math.max(-24, Math.min(24, value)) : 0;
+      numVal = pad.pitch;
+    } else if (param === 'volume') {
+      pad.volume = typeof value === 'number' ? Math.max(0, Math.min(2, value)) : 1;
+      numVal = pad.volume;
+    } else if (param === 'pan') {
+      pad.pan = typeof value === 'number' ? Math.max(-1, Math.min(1, value)) : 0;
+      numVal = pad.pan;
+    } else if (param === 'muteGroup') {
+      pad.muteGroup = typeof value === 'number' ? value : parseInt(String(value), 10) || 0;
+      numVal = pad.muteGroup;
+    } else if (param === 'reverse') {
+      pad.reverse = Boolean(value);
+      numVal = pad.reverse ? 1 : 0;
+    } else if (param === 'mode') {
+      pad.mode = value as 'oneshot' | 'gate' | 'loop';
+      numVal = pad.mode === 'loop' ? 2 : pad.mode === 'gate' ? 1 : 0;
+    }
+
+    sendToHost(
+      'sp404SetPadParam',
+      { bank, padId, param, value: numVal },
+      getTelemetryUrl('/sp404/pad/param')
+    );
     this.onStateChange?.();
   }
 
@@ -1311,6 +1646,7 @@ export class SP404AudioEngine {
     const pad = this.getPad(bank, padId);
     if (pad) {
       pad.audioBuffer = null;
+      pad.reversedBuffer = null;
       pad.waveform = [];
       pad.duration = 0;
       pad.label = `PAD ${bank}${padId.toString().padStart(2, '0')}`;

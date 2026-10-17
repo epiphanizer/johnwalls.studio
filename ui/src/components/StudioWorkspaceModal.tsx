@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Sliders, Disc, Sparkles, Check, ArrowRight, X, Layers, Activity } from 'lucide-react';
 
-export type StudioWorkspace = 'pedal_lab' | 'sp404' | 'state';
+export type StudioWorkspace = 'unified' | 'sp404' | 'pedal_lab' | 'state';
 
 interface StudioWorkspaceModalProps {
   currentWorkspace: StudioWorkspace;
@@ -46,8 +46,67 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
           </button>
         </div>
 
-        {/* Choice Cards (Pedal Lab / SP-404 / State) */}
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Choice Cards (Unified / Pedal Lab / SP-404 / State) */}
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 0: Unified Studio (Recommended) */}
+          <div
+            onClick={() => setSelected('unified')}
+            className={`cursor-pointer rounded-xl p-5 border-2 transition-all flex flex-col justify-between relative ${
+              selected === 'unified'
+                ? 'bg-gradient-to-b from-[#201c10] to-[#121008] border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+                : 'bg-[#0e1017] border-slate-800 hover:border-slate-700 opacity-80 hover:opacity-100'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center gap-1.5 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                RECOMMENDED
+              </span>
+              {selected === 'unified' && (
+                <div className="w-5 h-5 rounded-full bg-amber-500 text-black flex items-center justify-center font-bold text-xs shadow">
+                  <Check size={13} />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="w-12 h-12 rounded-xl bg-amber-950/60 border border-amber-700/50 flex items-center justify-center text-amber-400 mb-3 shadow-inner">
+                <Sparkles size={24} />
+              </div>
+
+              <h3 className="text-base font-black text-white uppercase tracking-wider mb-1">
+                Unified Studio
+              </h3>
+              <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+                Full Integrated Modular Surface: SP-404 Sampler, Collapsible Pedal Dock, Telemetry HUD & AI Copilot.
+              </p>
+
+              <div className="space-y-1.5 text-[10.5px] text-slate-400 border-t border-slate-800 pt-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-400">✓</span> SP-404 tactile 16-pad sampler center
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-400">✓</span> Collapsible pedalboard rack top dock
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-amber-400">✓</span> AI Copilot & Raycast palette (Cmd+K)
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className={`w-full mt-5 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2 transition ${
+                selected === 'unified'
+                  ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg'
+                  : 'bg-slate-800 text-slate-400'
+              }`}
+            >
+              <span>Launch Unified</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+
           {/* Card 1: Pedal Lab (Active) */}
           <div
             onClick={() => setSelected('pedal_lab')}
@@ -79,7 +138,7 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
                 Pedal Lab
               </h3>
               <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                Modular Stompbox Effects Rack & Authentic Tube Amplifiers (Mesa Boogie Mark III & Vox AC-30 Top Boost).
+                Modular Stompbox Effects Rack & Tube Amplifiers (Mesa Boogie Mark III & Vox AC-30 Top Boost).
               </p>
 
               <div className="space-y-1.5 text-[10.5px] text-slate-400 border-t border-slate-800 pt-3">
@@ -87,10 +146,10 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
                   <span className="text-emerald-400">✓</span> Dynamic stompbox chaining (Delay, Filter, Overdrive, Ducker)
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-emerald-400">✓</span> Real 12AX7 & EL84 tube physics & 5-band graphic EQ
+                  <span className="text-emerald-400">✓</span> Vacuum tube modeling & 5-band graphic EQ
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-emerald-400">✓</span> Live CRT Oscilloscope & reactive sidechain sensory ducking
+                  <span className="text-emerald-400">✓</span> Live oscilloscope & reactive sidechain sensory ducking
                 </div>
               </div>
             </div>
@@ -139,21 +198,21 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
                 SP-404 Original / A
               </h3>
               <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                Live Performance Sampler, Roland SD Card Manager, Chromatic Transpose & Real-Time Simultaneous Recording.
+                Linear Wave Sampler, Roland SD Card Manager, Chromatic Transpose & Real-Time Sampling.
               </p>
 
               <div className="space-y-1.5 text-[10.5px] text-slate-400 border-t border-slate-800 pt-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[#ff5500]">✓</span> Instant memory card patch loading & export to 404 SD card
+                  <span className="text-[#ff5500]">✓</span> Memory card patch library & export to SP-404 card
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[#ff5500]">✓</span> Live Ableton input recording & resample WHILE playing pads
+                  <span className="text-[#ff5500]">✓</span> Real-time track recording & master resampling
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[#ff5500]">✓</span> Chromatic 12-pad pitch keyboard & global transpose
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[#ff5500]">✓</span> Authentic MFX (Vinyl Sim 33/45, DJFX, Isolator, Cassette)
+                  <span className="text-[#ff5500]">✓</span> Classic MFX (Vinyl Sim 33/45, DJFX, Isolator, Cassette)
                 </div>
               </div>
             </div>
@@ -202,21 +261,21 @@ export const StudioWorkspaceModal: React.FC<StudioWorkspaceModalProps> = ({
                 State Cockpit
               </h3>
               <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                Global Ableton Live Session Awareness, Multi-Track MIDI Matrix & SuperCollider Server Cockpit.
+                Ableton Live Session Telemetry, Multi-Track MIDI Matrix & SuperCollider Server Cockpit.
               </p>
 
               <div className="space-y-1.5 text-[10.5px] text-slate-400 border-t border-slate-800 pt-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-purple-400">✓</span> Instant SuperCollider server boot (UDP: 57110) & OSC control
+                  <span className="text-purple-400">✓</span> SuperCollider server boot (UDP: 57110) & OSC control
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-purple-400">✓</span> Real Ableton Live session (.als) track matrix & MIDI recognition
+                  <span className="text-purple-400">✓</span> Ableton Live session (.als) track matrix & MIDI recognition
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-purple-400">✓</span> Real-time Ableton Live Scene matrix and playhead sync
+                  <span className="text-purple-400">✓</span> Real-time scene matrix and playhead sync
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-purple-400">✓</span> Pure telemetry & reporting cockpit with zero coloration
+                  <span className="text-purple-400">✓</span> Objective system telemetry & diagnostic console
                 </div>
               </div>
             </div>

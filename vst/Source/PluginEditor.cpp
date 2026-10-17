@@ -46,6 +46,7 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
                          else if (file.hasFileExtension(".woff2")) mime = "font/woff2";
                          else if (file.hasFileExtension(".woff")) mime = "font/woff";
                          else if (file.hasFileExtension(".json")) mime = "application/json";
+                         else if (file.hasFileExtension(".wav") || file.hasFileExtension(".WAV")) mime = "audio/wav";
 
                          std::vector<std::byte> bytes(mb.getSize());
                          std::memcpy(bytes.data(), mb.getData(), mb.getSize());
@@ -231,10 +232,14 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
         if (completion) completion(true);
     });
 
-    // Legacy SP-404 Original / A native event listeners
-    options = options.withEventListener("sp404TriggerPad", [this](const juce::var& data) {
+    // Legacy SP-404 Original / A native event listeners & native functions
+    auto triggerPadFromVar = [this](const juce::var& data) {
+        int bank = 0;
+        int padId = 1;
+        float vel = 1.0f;
+        float offset = 0.0f;
+
         if (data.isObject()) {
-            int bank = 0;
             auto bankVar = data.getProperty("bank", "A");
             if (bankVar.isString()) {
                 juce::String bStr = bankVar.toString().toUpperCase();
@@ -242,26 +247,62 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
             } else {
                 bank = static_cast<int>(bankVar);
             }
-            int padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
-            float vel = static_cast<float>(data.getProperty("velocity", 1.0));
-            float offset = static_cast<float>(data.getProperty("chromaticOffset", 0.0));
-            m_processorRef.triggerSP404Pad(bank, padId, vel, offset);
+            padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
+            vel = static_cast<float>(data.getProperty("velocity", 1.0));
+            offset = static_cast<float>(data.getProperty("chromaticOffset", 0.0));
+        } else if (data.isArray() && data.getArray()->size() >= 2) {
+            auto* arr = data.getArray();
+            auto bankVar = (*arr)[0];
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            padId = static_cast<int>((*arr)[1]);
+            if (arr->size() >= 3) vel = static_cast<float>((*arr)[2]);
+            if (arr->size() >= 4) offset = static_cast<float>((*arr)[3]);
         }
+        m_processorRef.triggerSP404Pad(bank, padId, vel, offset);
+    };
+
+    auto releasePadFromVar = [this](const juce::var& data) {
+        int bank = 0;
+        int padId = 1;
+
+        if (data.isObject()) {
+            auto bankVar = data.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
+        } else if (data.isArray() && data.getArray()->size() >= 2) {
+            auto* arr = data.getArray();
+            auto bankVar = (*arr)[0];
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            padId = static_cast<int>((*arr)[1]);
+        }
+        m_processorRef.releaseSP404Pad(bank, padId);
+    };
+
+    options = options.withEventListener("sp404TriggerPad", triggerPadFromVar);
+    options = options.withNativeFunction("sp404TriggerPad", [triggerPadFromVar](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty()) triggerPadFromVar(args[0]);
+        if (completion) completion(true);
     });
 
-    options = options.withEventListener("sp404ReleasePad", [this](const juce::var& data) {
-        if (data.isObject()) {
-            int bank = 0;
-            auto bankVar = data.getProperty("bank", "A");
-            if (bankVar.isString()) {
-                juce::String bStr = bankVar.toString().toUpperCase();
-                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
-            } else {
-                bank = static_cast<int>(bankVar);
-            }
-            int padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
-            m_processorRef.releaseSP404Pad(bank, padId);
-        }
+    options = options.withEventListener("sp404ReleasePad", releasePadFromVar);
+    options = options.withNativeFunction("sp404ReleasePad", [releasePadFromVar](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty()) releasePadFromVar(args[0]);
+        if (completion) completion(true);
     });
 
     options = options.withEventListener("sp404SetRouting", [this](const juce::var& data) {
@@ -271,6 +312,17 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
             m_processorRef.setSP404Routing(order, bypassed);
         }
     });
+    options = options.withNativeFunction("sp404SetRouting", [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty()) {
+            const auto& data = args[0];
+            if (data.isObject()) {
+                juce::String order = data.getProperty("order", "before").toString();
+                bool bypassed = static_cast<bool>(data.getProperty("bypassed", false));
+                m_processorRef.setSP404Routing(order, bypassed);
+            }
+        }
+        if (completion) completion(true);
+    });
 
     options = options.withEventListener("sp404SetParam", [this](const juce::var& data) {
         if (data.isObject()) {
@@ -279,24 +331,61 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
             m_processorRef.setSP404Param(name, val);
         }
     });
+    options = options.withNativeFunction("sp404SetParam", [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty()) {
+            const auto& data = args[0];
+            if (data.isObject()) {
+                juce::String name = data.getProperty("param", data.getProperty("name", "")).toString();
+                float val = static_cast<float>(data.getProperty("value", 0.0));
+                m_processorRef.setSP404Param(name, val);
+            }
+        }
+        if (completion) completion(true);
+    });
 
     options = options.withEventListener("sp404StopAll", [this](const juce::var& /*data*/) {
         m_processorRef.getSP404Engine().stopAll();
+    });
+    options = options.withNativeFunction("sp404StopAll", [this](const juce::Array<juce::var>& /*args*/, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        m_processorRef.getSP404Engine().stopAll();
+        if (completion) completion(true);
     });
 
     auto loadSP404SampleFromData = [this](const juce::var& data) -> bool {
         if (!data.isObject()) return false;
 
-        const auto encoded = data.getProperty("wavBase64", "").toString();
-        if (encoded.isEmpty()) return false;
-
-        juce::MemoryBlock wavData;
-        juce::MemoryOutputStream decodedData(wavData, true);
-        if (!juce::Base64::convertFromBase64(decodedData, encoded)) return false;
-
-        juce::MemoryInputStream input(wavData.getData(), wavData.getSize(), false);
         juce::WavAudioFormat wavFormat;
-        std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(&input, false));
+        std::unique_ptr<juce::AudioFormatReader> reader;
+        juce::MemoryBlock wavData;
+
+        const auto filePath = data.getProperty("filePath", "").toString();
+        if (filePath.isNotEmpty()) {
+            juce::File file(filePath);
+            if (file.existsAsFile()) {
+                auto fileStream = file.createInputStream();
+                if (fileStream) {
+                    if (auto* r = wavFormat.createReaderFor(fileStream.get(), false)) {
+                        fileStream.release();
+                        reader.reset(r);
+                    }
+                }
+            }
+        }
+
+        if (!reader) {
+            const auto encoded = data.getProperty("wavBase64", "").toString();
+            if (encoded.isEmpty()) return false;
+
+            juce::MemoryOutputStream decodedData(wavData, true);
+            if (!juce::Base64::convertFromBase64(decodedData, encoded)) return false;
+
+            auto memStream = std::make_unique<juce::MemoryInputStream>(wavData, true);
+            if (auto* r = wavFormat.createReaderFor(memStream.get(), false)) {
+                memStream.release();
+                reader.reset(r);
+            }
+        }
+
         if (!reader || reader->lengthInSamples <= 0 || reader->lengthInSamples > 60 * 60 * 192000) return false;
 
         const int bank = juce::jlimit(0, 9, static_cast<int>(data.getProperty("bank", 0)));
@@ -327,8 +416,15 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
         loadSP404SampleFromData(data);
     });
 
+    options = options.withEventListener("sp404LoadSamplePath", [loadSP404SampleFromData](const juce::var& data) {
+        loadSP404SampleFromData(data);
+    });
+
     options = options.withEventListener("sp404LoadSampleBegin", [this](const juce::var& data) {
         if (!data.isObject()) return;
+        if (m_sp404Transfers.size() > 8) {
+            m_sp404Transfers.clear();
+        }
         const auto transferId = data.getProperty("transferId", "").toString();
         const int totalChunks = static_cast<int>(data.getProperty("totalChunks", 0));
         const int totalBytes = static_cast<int>(data.getProperty("totalBytes", 0));
@@ -346,15 +442,19 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
         if (it == m_sp404Transfers.end()) return;
         const int index = static_cast<int>(data.getProperty("index", -1));
         const auto chunk = data.getProperty("data", "").toString();
-        if (index != it->second.nextChunk || chunk.isEmpty() || it->second.base64.length() + chunk.length() > 256 * 1024 * 1024) {
+        if (index != it->second.nextChunk || chunk.isEmpty() || it->second.binaryData.getSize() > 256 * 1024 * 1024) {
             m_sp404Transfers.erase(it);
             return;
         }
-        it->second.base64 += chunk;
+        juce::MemoryOutputStream stream(it->second.binaryData, true);
+        if (!juce::Base64::convertFromBase64(stream, chunk)) {
+            m_sp404Transfers.erase(it);
+            return;
+        }
         ++it->second.nextChunk;
     });
 
-    options = options.withEventListener("sp404LoadSampleEnd", [this, loadSP404SampleFromData](const juce::var& data) {
+    options = options.withEventListener("sp404LoadSampleEnd", [this](const juce::var& data) {
         if (!data.isObject()) return;
         const auto transferId = data.getProperty("transferId", "").toString();
         auto it = m_sp404Transfers.find(transferId.toStdString());
@@ -362,10 +462,38 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
         auto transfer = std::move(it->second);
         m_sp404Transfers.erase(it);
         if (transfer.nextChunk != transfer.expectedChunks || !transfer.metadata.isObject()) return;
-        const int expectedBytes = static_cast<int>(transfer.metadata.getProperty("totalBytes", 0));
-        if (expectedBytes <= 0 || transfer.base64.length() != expectedBytes) return;
-        transfer.metadata.getDynamicObject()->setProperty("wavBase64", transfer.base64);
-        loadSP404SampleFromData(transfer.metadata);
+
+        // Asynchronously decode and load in background thread to prevent UI freezing
+        juce::Thread::launch([this, metadata = transfer.metadata, binaryData = std::move(transfer.binaryData)]() mutable {
+            juce::WavAudioFormat wavFormat;
+            auto memStream = std::make_unique<juce::MemoryInputStream>(binaryData, false);
+            std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(memStream.get(), false));
+            if (!reader || reader->lengthInSamples <= 0 || reader->lengthInSamples > 60 * 60 * 192000) return;
+            memStream.release();
+
+            const int bank = juce::jlimit(0, 9, static_cast<int>(metadata.getProperty("bank", 0)));
+            const int padId = static_cast<int>(metadata.getProperty("padId", 1));
+            const int numChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
+            const int numSamples = static_cast<int>(reader->lengthInSamples);
+            juce::AudioBuffer<float> sample(numChannels, numSamples);
+            if (!reader->read(&sample, 0, numSamples, 0, true, numChannels > 1)) return;
+
+            const auto label = metadata.getProperty("label", "").toString().toStdString();
+            const float pitch = static_cast<float>(metadata.getProperty("pitch", 0.0));
+            const float volume = static_cast<float>(metadata.getProperty("volume", 1.0));
+            const float pan = static_cast<float>(metadata.getProperty("pan", 0.0));
+            const bool loop = static_cast<bool>(metadata.getProperty("loop", false));
+            const bool reverse = static_cast<bool>(metadata.getProperty("reverse", false));
+            const int muteGroup = static_cast<int>(metadata.getProperty("muteGroup", 0));
+
+            m_processorRef.getSP404Engine().loadCustomSample(
+                bank, padId,
+                sample.getReadPointer(0),
+                numChannels > 1 ? sample.getReadPointer(1) : nullptr,
+                static_cast<size_t>(numSamples),
+                static_cast<float>(reader->sampleRate),
+                label, pitch, volume, pan, loop, reverse, muteGroup);
+        });
     });
 
     options = options.withEventListener("sp404CancelSampleTransfer", [this](const juce::var& data) {
@@ -381,6 +509,58 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
     options = options.withEventListener("sp404ClearSamples", [this](const juce::var& /*data*/) {
         m_sp404Transfers.clear();
         m_processorRef.getSP404Engine().clearCustomSamples();
+    });
+
+    options = options.withEventListener("sp404SetTranspose", [this](const juce::var& data) {
+        if (data.isObject()) {
+            float transpose = static_cast<float>(data.getProperty("transpose", data.getProperty("value", 0.0)));
+            m_processorRef.setSP404GlobalTranspose(transpose);
+        }
+    });
+
+    options = options.withEventListener("sp404SetHold", [this](const juce::var& data) {
+        if (data.isObject()) {
+            bool hold = static_cast<bool>(data.getProperty("hold", data.getProperty("value", data.getProperty("enabled", false))));
+            m_processorRef.setSP404Hold(hold);
+        }
+    });
+
+    options = options.withEventListener("sp404SetPadParam", [this](const juce::var& data) {
+        if (data.isObject()) {
+            int bank = 0;
+            auto bankVar = data.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            int padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
+            juce::String param = data.getProperty("param", "").toString();
+            if (param == "label") {
+                juce::String label = data.getProperty("value", data.getProperty("label", "")).toString();
+                m_processorRef.setSP404PadLabel(bank, padId, label);
+            } else {
+                float val = static_cast<float>(data.getProperty("value", 0.0));
+                m_processorRef.setSP404PadParam(bank, padId, param, val);
+            }
+        }
+    });
+
+    options = options.withEventListener("sp404SetPadLabel", [this](const juce::var& data) {
+        if (data.isObject()) {
+            int bank = 0;
+            auto bankVar = data.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            int padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
+            juce::String label = data.getProperty("label", data.getProperty("value", "")).toString();
+            m_processorRef.setSP404PadLabel(bank, padId, label);
+        }
     });
 
     // SP-404 Native Functions (Promise-based)
@@ -435,7 +615,71 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
             const auto& data = args[0];
             juce::String name = data.getProperty("param", data.getProperty("name", "")).toString();
             float val = static_cast<float>(data.getProperty("value", 0.0));
+            if (name == "transpose" || name == "globalTranspose") {
+                m_processorRef.setSP404GlobalTranspose(val);
+            } else if (name == "hold" || name == "isHold") {
+                m_processorRef.setSP404Hold(val > 0.5f);
+            }
             m_processorRef.setSP404Param(name, val);
+        }
+        if (completion) completion(true);
+    });
+
+    options = options.withNativeFunction("sp404SetTranspose", [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty() && args[0].isObject()) {
+            const auto& data = args[0];
+            float transpose = static_cast<float>(data.getProperty("transpose", data.getProperty("value", 0.0)));
+            m_processorRef.setSP404GlobalTranspose(transpose);
+        }
+        if (completion) completion(true);
+    });
+
+    options = options.withNativeFunction("sp404SetHold", [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty() && args[0].isObject()) {
+            bool hold = static_cast<bool>(args[0].getProperty("hold", args[0].getProperty("value", false)));
+            m_processorRef.setSP404Hold(hold);
+        }
+        if (completion) completion(true);
+    });
+
+    options = options.withNativeFunction("sp404SetPadParam", [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty() && args[0].isObject()) {
+            const auto& data = args[0];
+            int bank = 0;
+            auto bankVar = data.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            int padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
+            juce::String param = data.getProperty("param", "").toString();
+            if (param == "label") {
+                juce::String label = data.getProperty("value", data.getProperty("label", "")).toString();
+                m_processorRef.setSP404PadLabel(bank, padId, label);
+            } else {
+                float val = static_cast<float>(data.getProperty("value", 0.0));
+                m_processorRef.setSP404PadParam(bank, padId, param, val);
+            }
+        }
+        if (completion) completion(true);
+    });
+
+    options = options.withNativeFunction("sp404SetPadLabel", [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        if (!args.isEmpty() && args[0].isObject()) {
+            const auto& data = args[0];
+            int bank = 0;
+            auto bankVar = data.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            int padId = static_cast<int>(data.getProperty("padId", data.getProperty("pad", 1)));
+            juce::String label = data.getProperty("label", data.getProperty("value", "")).toString();
+            m_processorRef.setSP404PadLabel(bank, padId, label);
         }
         if (completion) completion(true);
     });
@@ -446,6 +690,11 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
     });
 
     options = options.withNativeFunction("sp404LoadSample", [loadSP404SampleFromData](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        const bool loaded = !args.isEmpty() && loadSP404SampleFromData(args[0]);
+        if (completion) completion(loaded);
+    });
+
+    options = options.withNativeFunction("sp404LoadSamplePath", [loadSP404SampleFromData](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
         const bool loaded = !args.isEmpty() && loadSP404SampleFromData(args[0]);
         if (completion) completion(loaded);
     });
@@ -479,6 +728,8 @@ JohnwallsStudioAudioProcessorEditor::JohnwallsStudioAudioProcessorEditor(Johnwal
 
 JohnwallsStudioAudioProcessorEditor::~JohnwallsStudioAudioProcessorEditor() {
     stopTimer();
+    m_webView.reset();
+    m_sp404Transfers.clear();
 }
 
 void JohnwallsStudioAudioProcessorEditor::timerCallback() {

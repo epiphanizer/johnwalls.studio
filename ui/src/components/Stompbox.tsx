@@ -30,7 +30,7 @@ const DELAY_DIVISIONS = [
   { index: 13, label: '1/32', name: '1/32 32nd' }
 ] as const;
 
-export const Stompbox: React.FC<StompboxProps> = ({
+export const Stompbox: React.FC<StompboxProps> = React.memo(({
   pedal,
   onUpdateParam,
   onToggleBypass,
@@ -281,4 +281,4 @@ export const Stompbox: React.FC<StompboxProps> = ({
       </div>
     </div>
   );
-};
+});

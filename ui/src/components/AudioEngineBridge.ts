@@ -28,6 +28,7 @@ export class AudioEngineBridge {
   // Master & Node Chain
   private masterGain: GainNode | null = null;
   private masterAnalyser: AnalyserNode | null = null;
+  private masterTimeDomainBuffer: Uint8Array = new Uint8Array(256);
   private duckerGain: GainNode | null = null;
 
   // Stompbox Sub-Chain Nodes
@@ -363,6 +364,9 @@ export class AudioEngineBridge {
         if (this.currentSP404Gain.context === this.masterGain.context) {
           this.currentSP404Gain.connect(this.masterGain);
         }
+      } else if (!hasJuceNativeHost()) {
+        // Standalone browser fallback: connect directly to physical audio output
+        this.currentSP404Gain.connect(this.ctx.destination);
       }
     } catch (e) {
       console.warn('SP-404 route connection handled safely:', e);
@@ -542,9 +546,6 @@ export class AudioEngineBridge {
 
       this.reconnectSignalChain();
 
-      // Connect to Live Audio Input on the fly if user media is accessible
-      this.connectLiveAudioStream();
-
       this.isRunning = true;
       this.windowStartTimestamp = performance.now();
       this.lastKickTimestamp = performance.now();
@@ -584,32 +585,12 @@ export class AudioEngineBridge {
   }
 
   /**
-   * Connects live physical audio input (microphone, line-in, or virtual audio device) on the fly.
+   * Connects live physical audio input on the fly.
+   * In plugin/DAW mode, audio is streamed directly from the host track without requesting microphone permission.
    */
   public async connectLiveAudioStream(): Promise<boolean> {
-    if (!navigator.mediaDevices?.getUserMedia || !this.ctx || !this.duckerGain) {
-      return false;
-    }
-
-    try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        },
-        video: false
-      });
-
-      this.liveInputSource = this.ctx.createMediaStreamSource(this.mediaStream);
-      this.liveInputSource.connect(this.duckerGain);
-      this.isLiveInputActive = true;
-      return true;
-    } catch {
-      // If permission is denied or no physical mic attached, engine remains armed for DAW injection
-      this.isLiveInputActive = false;
-      return false;
-    }
+    this.isLiveInputActive = false;
+    return false;
   }
 
   public isLiveInputEnabled(): boolean {
@@ -652,8 +633,12 @@ export class AudioEngineBridge {
     if (!this.ctx || !this.masterAnalyser) return;
 
     const nowMs = performance.now();
-    const buffer = new Uint8Array(this.masterAnalyser.frequencyBinCount);
-    this.masterAnalyser.getByteTimeDomainData(buffer);
+    const count = this.masterAnalyser.frequencyBinCount;
+    if (this.masterTimeDomainBuffer.length !== count) {
+      this.masterTimeDomainBuffer = new Uint8Array(count);
+    }
+    const buffer = this.masterTimeDomainBuffer;
+    this.masterAnalyser.getByteTimeDomainData(buffer as any);
 
     // 1. Calculate overall RMS energy from real buffer
     let sumSquared = 0;

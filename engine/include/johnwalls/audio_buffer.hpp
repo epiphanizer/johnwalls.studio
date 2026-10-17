@@ -21,22 +21,22 @@ public:
     [[nodiscard]] size_t getNumSamples() const noexcept { return m_numSamples; }
 
     [[nodiscard]] float* getChannelData(size_t channel) noexcept {
-        return (channel < m_numChannels) ? m_channels[channel] : nullptr;
+        return (m_channels != nullptr && channel < m_numChannels) ? m_channels[channel] : nullptr;
     }
 
     [[nodiscard]] const float* getChannelData(size_t channel) const noexcept {
-        return (channel < m_numChannels) ? m_channels[channel] : nullptr;
+        return (m_channels != nullptr && channel < m_numChannels) ? m_channels[channel] : nullptr;
     }
 
     [[nodiscard]] float getSample(size_t channel, size_t sampleIndex) const noexcept {
-        if (channel < m_numChannels && sampleIndex < m_numSamples) {
+        if (m_channels != nullptr && channel < m_numChannels && m_channels[channel] != nullptr && sampleIndex < m_numSamples) {
             return m_channels[channel][sampleIndex];
         }
         return 0.0f;
     }
 
     void setSample(size_t channel, size_t sampleIndex, float value) noexcept {
-        if (channel < m_numChannels && sampleIndex < m_numSamples) {
+        if (m_channels != nullptr && channel < m_numChannels && m_channels[channel] != nullptr && sampleIndex < m_numSamples) {
             m_channels[channel][sampleIndex] = value;
         }
     }
