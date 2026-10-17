@@ -23,3 +23,7 @@ cmake --build /Users/seanhalls/Desktop/sh/johnwalls_studio/vst/build --config Re
   - `/Users/seanhalls/Library/Audio/Plug-Ins/VST3/johnwalls.studio.vst3`
   - `/Users/seanhalls/Library/Audio/Plug-Ins/Components/johnwalls.studio.component`
 - Never prompt or ask the user whether to build; always build so Ableton Live has the latest binary ready to play immediately.
+
+## MANDATORY RULE: EVIDENCE-VERIFIED LABELS & PROHIBITION OF THEATRICAL ATELIER HYPE
+- All UI badges, room headers, stages, and deliverable states must strictly reflect proven evidence. Eliminate theatrical buzzwords such as "Interactive Atelier Stage" or generic "Atelier" taxonomy.
+- Surfaces must be proven by active runtime evidence before being labeled interactive or live, otherwise defaulting to objective labels such as "Space Overview" or "Room Profile".
