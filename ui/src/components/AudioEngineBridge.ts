@@ -331,6 +331,14 @@ export class AudioEngineBridge {
     return this.ctx;
   }
 
+  public getMasterGain(): GainNode | null {
+    return this.masterGain;
+  }
+
+  public getDuckerGain(): GainNode | null {
+    return this.duckerGain;
+  }
+
   private currentSP404Gain: GainNode | null = null;
   private currentSP404Order: 'before' | 'after' = 'after';
 

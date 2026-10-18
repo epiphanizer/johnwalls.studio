@@ -21,6 +21,7 @@ import {
 import { StateTelemetry, TerminalEntry } from '../types';
 import { TerminalLogLine } from './TerminalLogLine';
 import { stateBridge } from '../utils/stateBridge';
+import { getMidiNoteName } from '../utils/commandExecutor';
 
 export interface StateWorkstationProps {
   telemetry: StateTelemetry;
@@ -47,14 +48,6 @@ const QUICK_COMMANDS = [
   'sc status',
   'help'
 ];
-
-function getMidiNoteName(noteNum?: number): string {
-  if (!noteNum || noteNum <= 0 || noteNum > 127) return '—';
-  const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const octave = Math.floor(noteNum / 12) - 1;
-  const note = notes[noteNum % 12];
-  return `${note}${octave}`;
-}
 
 export const StateWorkstation: React.FC<StateWorkstationProps> = React.memo(({
   telemetry,

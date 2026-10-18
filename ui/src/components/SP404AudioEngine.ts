@@ -3,6 +3,7 @@ import { audioBufferToWav, extractWaveformProfile } from '../utils/wavEncoder';
 import { generateDefaultSample, generateWallsDevineSample } from '../utils/sp404DefaultSamples';
 import { getSharedAudioContext } from '../utils/sharedAudioContext';
 import { getTelemetryUrl, hasJuceNativeHost } from '../utils/nativeTransport';
+import { createSliceBuffers } from '../utils/transientDetector';
 import {
   getLegacyPadFilename,
   listSP404Libraries,
@@ -27,7 +28,7 @@ export interface SP404Pad {
   id: number; // 1 to 12 on the legacy Original / A profile
   bank: BankLetter;
   label: string;
-  category: 'kick' | 'snare' | 'hat' | 'perc' | 'vox' | 'sample' | 'bass' | 'fx' | 'custom';
+  category: 'kick' | 'snare' | 'hat' | 'perc' | 'vox' | 'sample' | 'bass' | 'fx' | 'custom' | 'chop';
   audioBuffer: AudioBuffer | null;
   waveform: number[];
   duration: number;
@@ -205,6 +206,22 @@ export class SP404AudioEngine {
   private recordingDurationMs: number = 0;
   private recordTimer: number | null = null;
 
+  // Retrospective 25-Second Continuous Skip-Back Buffer
+  private isSkipBackEnabled: boolean = true;
+  private readonly skipBackCapacitySec: number = 25.0;
+  private skipBackBufferSize: number = 1200000;
+  private ringBufferWetL: Float32Array | null = null;
+  private ringBufferWetR: Float32Array | null = null;
+  private ringBufferDryL: Float32Array | null = null;
+  private ringBufferDryR: Float32Array | null = null;
+  private skipBackWriteIndex: number = 0;
+  private skipBackTotalSamplesRecorded: number = 0;
+  private skipBackProcessor: ScriptProcessorNode | null = null;
+  private skipBackMuteGain: GainNode | null = null;
+  private skipBackDryProcessor: ScriptProcessorNode | null = null;
+  private skipBackDryMuteGain: GainNode | null = null;
+  private onSkipBackActivity: ((hasAudio: boolean, peakLevel: number) => void) | null = null;
+
   // Callbacks
   private onStateChange: (() => void) | null = null;
   private onRecordingProgress: ((elapsedMs: number) => void) | null = null;
@@ -241,6 +258,10 @@ export class SP404AudioEngine {
 
   public setOnTransferProgress(cb: (progress: SP404TransferProgress) => void) {
     this.onTransferProgress = cb;
+  }
+
+  public setOnSkipBackActivity(cb: (hasAudio: boolean, peakLevel: number) => void) {
+    this.onSkipBackActivity = cb;
   }
 
   public hasNativeState(): boolean {
@@ -460,6 +481,51 @@ export class SP404AudioEngine {
       // Populate active Bank A with Walls:Devine procedural audio & fetch master WAVs
       this.populateBank('A');
 
+      // 25-Second Continuous Retrospective Skip-Back Ring Buffer
+      const sampleRate = this.ctx.sampleRate || 48000;
+      this.skipBackBufferSize = Math.round(this.skipBackCapacitySec * sampleRate);
+      this.ringBufferWetL = new Float32Array(this.skipBackBufferSize);
+      this.ringBufferWetR = new Float32Array(this.skipBackBufferSize);
+      this.ringBufferDryL = new Float32Array(this.skipBackBufferSize);
+      this.ringBufferDryR = new Float32Array(this.skipBackBufferSize);
+      this.skipBackWriteIndex = 0;
+      this.skipBackTotalSamplesRecorded = 0;
+
+      this.skipBackProcessor = this.ctx.createScriptProcessor(4096, 2, 2);
+      this.skipBackMuteGain = this.ctx.createGain();
+      this.skipBackMuteGain.gain.setValueAtTime(0, now);
+
+      this.skipBackProcessor.onaudioprocess = (e) => {
+        if (!this.ringBufferWetL || !this.ringBufferWetR) return;
+        const inL = e.inputBuffer.getChannelData(0);
+        const inR = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : inL;
+        const len = inL.length;
+        const bufLen = this.skipBackBufferSize;
+
+        let peak = 0;
+        for (let i = 0; i < len; i++) {
+          const lVal = inL[i];
+          const rVal = inR[i];
+          const abs = Math.max(Math.abs(lVal), Math.abs(rVal));
+          if (abs > peak) peak = abs;
+
+          const idx = (this.skipBackWriteIndex + i) % bufLen;
+          this.ringBufferWetL[idx] = lVal;
+          this.ringBufferWetR[idx] = rVal;
+        }
+
+        this.skipBackWriteIndex = (this.skipBackWriteIndex + len) % bufLen;
+        this.skipBackTotalSamplesRecorded += len;
+
+        if (this.onSkipBackActivity) {
+          this.onSkipBackActivity(peak > 0.0005, peak);
+        }
+      };
+
+      this.masterGain.connect(this.skipBackProcessor);
+      this.skipBackProcessor.connect(this.skipBackMuteGain);
+      this.skipBackMuteGain.connect(this.ctx.destination);
+
       this.isInitialized = true;
       this.onStateChange?.();
       return true;
@@ -467,6 +533,147 @@ export class SP404AudioEngine {
       console.warn('SP-404 Audio Engine init warning:', e);
       return false;
     }
+  }
+
+  /**
+   * Taps clean DI input before pedals/effects to write into the dry ring buffer.
+   */
+  public tapDryInput(dryNode: AudioNode) {
+    if (!this.ctx || !dryNode || this.skipBackDryProcessor) return;
+    try {
+      this.skipBackDryProcessor = this.ctx.createScriptProcessor(4096, 2, 2);
+      this.skipBackDryMuteGain = this.ctx.createGain();
+      this.skipBackDryMuteGain.gain.setValueAtTime(0, this.ctx.currentTime);
+
+      this.skipBackDryProcessor.onaudioprocess = (e) => {
+        if (!this.ringBufferDryL || !this.ringBufferDryR) return;
+        const inL = e.inputBuffer.getChannelData(0);
+        const inR = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : inL;
+        const len = inL.length;
+        const bufLen = this.skipBackBufferSize;
+
+        for (let i = 0; i < len; i++) {
+          const idx = (this.skipBackWriteIndex + i) % bufLen;
+          this.ringBufferDryL[idx] = inL[i];
+          this.ringBufferDryR[idx] = inR[i];
+        }
+      };
+
+      dryNode.connect(this.skipBackDryProcessor);
+      this.skipBackDryProcessor.connect(this.skipBackDryMuteGain);
+      this.skipBackDryMuteGain.connect(this.ctx.destination);
+    } catch (e) {
+      console.warn('Dry DI tap connection error:', e);
+    }
+  }
+
+  /**
+   * Returns whether retrospective audio is currently stored in the ring buffer.
+   */
+  public hasSkipBackAudio(): boolean {
+    return this.skipBackTotalSamplesRecorded > 1024;
+  }
+
+  /**
+   * Returns the duration of valid audio currently buffered (up to 25 seconds).
+   */
+  public getSkipBackDuration(): number {
+    if (!this.ctx) return 0;
+    const sampleRate = this.ctx.sampleRate || 48000;
+    return Math.min(this.skipBackCapacitySec, this.skipBackTotalSamplesRecorded / sampleRate);
+  }
+
+  /**
+   * Extracts the retrospective audio from the circular buffer as a standard AudioBuffer.
+   */
+  public getSkipBackAudioBuffer(
+    source: 'master' | 'clean_di' = 'master',
+    durationSec: number = 25.0
+  ): AudioBuffer | null {
+    if (!this.ctx || !this.ringBufferWetL) return null;
+
+    const sampleRate = this.ctx.sampleRate || 48000;
+    const bufLen = this.skipBackBufferSize;
+    const availableSamples = Math.min(bufLen, this.skipBackTotalSamplesRecorded);
+    const requestedSamples = Math.min(availableSamples, Math.round(durationSec * sampleRate));
+
+    if (requestedSamples < 256) return null;
+
+    const audioBuf = this.ctx.createBuffer(2, requestedSamples, sampleRate);
+    const outL = audioBuf.getChannelData(0);
+    const outR = audioBuf.getChannelData(1);
+
+    const ringL = source === 'clean_di' && this.ringBufferDryL ? this.ringBufferDryL : this.ringBufferWetL;
+    const ringR = source === 'clean_di' && this.ringBufferDryR ? this.ringBufferDryR : (this.ringBufferWetR || ringL);
+    if (!ringL || !ringR) return null;
+
+    const startIdx = (this.skipBackWriteIndex - requestedSamples + bufLen) % bufLen;
+
+    for (let i = 0; i < requestedSamples; i++) {
+      const srcIdx = (startIdx + i) % bufLen;
+      outL[i] = ringL[srcIdx];
+      outR[i] = ringR[srcIdx];
+    }
+
+    return audioBuf;
+  }
+
+  /**
+   * Directly assigns an AudioBuffer to a target pad.
+   */
+  public assignBufferToPad(
+    bank: BankLetter,
+    padId: number,
+    buffer: AudioBuffer,
+    label?: string,
+    mode: 'oneshot' | 'gate' = 'oneshot',
+    muteGroup: number = 0
+  ) {
+    const pad = this.getPad(bank, padId);
+    if (!pad) return;
+
+    pad.audioBuffer = buffer;
+    pad.duration = buffer.duration;
+    pad.sampleRate = buffer.sampleRate;
+    pad.waveform = extractWaveformProfile(buffer, 32);
+    pad.mode = mode;
+    pad.muteGroup = muteGroup;
+    if (label) {
+      pad.label = label.slice(0, 14);
+    }
+    this.onStateChange?.();
+  }
+
+  /**
+   * Slices an AudioBuffer using provided slice points and assigns across the 16 pads of a bank.
+   * Configures One-Shot playback with Choke Group 2 (MPC/SP-404 standard).
+   */
+  public sliceAndAssignToPads(
+    bank: BankLetter,
+    sourceBuffer: AudioBuffer,
+    slicePoints: number[],
+    baseLabel: string = 'CHOP'
+  ): number {
+    if (!this.ctx) return 0;
+    const slices = createSliceBuffers(this.ctx, sourceBuffer, slicePoints);
+    const bankPads = this.getBank(bank);
+    const count = Math.min(slices.length, bankPads.length);
+
+    for (let i = 0; i < count; i++) {
+      const pad = bankPads[i];
+      const sliceBuf = slices[i];
+      pad.audioBuffer = sliceBuf;
+      pad.duration = sliceBuf.duration;
+      pad.sampleRate = sliceBuf.sampleRate;
+      pad.waveform = extractWaveformProfile(sliceBuf, 32);
+      pad.mode = 'oneshot';
+      pad.muteGroup = 2; // Roland/MPC Choke Group 2
+      pad.category = 'chop';
+      pad.label = `${baseLabel} ${String(i + 1).padStart(2, '0')}`;
+    }
+
+    this.onStateChange?.();
+    return count;
   }
 
   public ensureBankLoaded(bankLetter: BankLetter) {

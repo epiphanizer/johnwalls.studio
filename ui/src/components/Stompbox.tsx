@@ -84,18 +84,18 @@ export const Stompbox: React.FC<StompboxProps> = React.memo(({
       {/* Top Bar: Title, Model Badge, Inspect and Remove button */}
       <div className="flex items-start justify-between border-b border-slate-800/80 pb-2.5">
         <div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <span
               className={`w-2 h-2 rounded-full transition-all duration-300 ${
                 pedal.bypassed ? 'bg-slate-700' : style.led
               }`}
             />
-            <h3 className="font-bold font-mono text-xs tracking-wide text-white uppercase">
+            <h3 className="font-bold text-xs tracking-wide text-white uppercase font-sans">
               {pedal.title}
             </h3>
           </div>
-          <span className="text-[9px] font-mono text-slate-500 ml-3.5 block">
-            [{pedal.id}]
+          <span className="text-[9.5px] font-mono text-slate-500 ml-4 block uppercase mt-0.5">
+            {pedal.type} · {pedal.id}
           </span>
         </div>
 
@@ -104,7 +104,7 @@ export const Stompbox: React.FC<StompboxProps> = React.memo(({
             <button
               type="button"
               onClick={() => onSaveToLibrary(pedal)}
-              className="p-1 rounded text-[9px] font-mono transition text-slate-400 hover:text-[#e6af2e] border border-slate-800 hover:border-slate-700 hover:bg-slate-800/60"
+              className="p-1 rounded text-slate-400 hover:text-[#e6af2e] border border-slate-800 hover:border-slate-700 hover:bg-slate-800/60 transition"
               title="Save as Custom Library Preset"
             >
               <Bookmark size={12} />
@@ -115,7 +115,7 @@ export const Stompbox: React.FC<StompboxProps> = React.memo(({
             <button
               type="button"
               onClick={() => onInspect(pedal.id)}
-              className={`p-1 rounded text-[9px] font-mono transition border ${
+              className={`p-1 rounded transition border ${
                 isInspected
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
                   : 'text-slate-400 hover:text-white border-slate-800 hover:bg-slate-800/60'
@@ -125,10 +125,6 @@ export const Stompbox: React.FC<StompboxProps> = React.memo(({
               <Eye size={12} className={isInspected ? 'text-emerald-400' : 'text-slate-400'} />
             </button>
           )}
-
-          <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border ${style.badge}`}>
-            {pedal.type}
-          </span>
 
           <button
             type="button"
