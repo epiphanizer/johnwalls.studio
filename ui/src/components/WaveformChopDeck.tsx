@@ -32,6 +32,8 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
   const [targetBank, setTargetBank] = useState<BankLetter>(activeBank);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [draggedMarkerIdx, setDraggedMarkerIdx] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<1 | 2 | 4 | 8>(1);
+  const [pan, setPan] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const playbackSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -129,6 +131,8 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
     const width = canvas.width;
     const height = canvas.height;
     const duration = audioBuffer.duration || 1;
+    const viewStart = pan * duration * (1 - 1 / zoom);
+    const viewDuration = duration / zoom;
 
     ctx.fillStyle = '#0a0d14';
     ctx.fillRect(0, 0, width, height);
@@ -142,13 +146,15 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
     ctx.stroke();
 
     const data = audioBuffer.getChannelData(0);
-    const step = Math.ceil(data.length / width);
+    const sampleStart = Math.floor(viewStart * audioBuffer.sampleRate);
+    const viewSamples = Math.max(1, Math.floor(viewDuration * audioBuffer.sampleRate));
+    const step = Math.max(1, Math.ceil(viewSamples / width));
     const amp = height * 0.42;
 
     // Draw slices with alternating background tint
     for (let s = 0; s < slicePoints.length; s++) {
-      const sStart = (slicePoints[s] / duration) * width;
-      const sEnd = s < slicePoints.length - 1 ? (slicePoints[s + 1] / duration) * width : width;
+      const sStart = ((slicePoints[s] - viewStart) / viewDuration) * width;
+      const sEnd = ((s < slicePoints.length - 1 ? slicePoints[s + 1] : duration) - viewStart) / viewDuration * width;
 
       if (activeSliceIdx === s) {
         ctx.fillStyle = 'rgba(245, 158, 11, 0.25)'; // Highlight active slice in amber
@@ -165,7 +171,7 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
       let min = 1.0;
       let max = -1.0;
       for (let j = 0; j < step; j++) {
-        const datum = data[i * step + j] || 0;
+        const datum = data[Math.min(data.length - 1, sampleStart + i * step + j)] || 0;
         if (datum < min) min = datum;
         if (datum > max) max = datum;
       }
@@ -175,7 +181,8 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
 
     // Draw vertical slice markers
     for (let s = 0; s < slicePoints.length; s++) {
-      const x = (slicePoints[s] / duration) * width;
+      const x = ((slicePoints[s] - viewStart) / viewDuration) * width;
+      if (x < 0 || x > width) continue;
 
       // Marker line
       ctx.strokeStyle = s === 0 ? '#10b981' : '#f59e0b';
@@ -185,6 +192,11 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
       ctx.lineTo(x, height);
       ctx.stroke();
 
+      // Grab handles at both edges make each editable slice boundary explicit.
+      ctx.fillStyle = s === 0 ? '#10b981' : '#f59e0b';
+      ctx.fillRect(x - 3, 22, 6, 10);
+      ctx.fillRect(x - 3, height - 32, 6, 10);
+
       // Slice label badge
       ctx.fillStyle = s === activeSliceIdx ? '#f59e0b' : '#1e293b';
       ctx.fillRect(x + 2, 4, 22, 16);
@@ -193,7 +205,7 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
       ctx.font = 'bold 10px monospace';
       ctx.fillText(String(s + 1), x + 6, 16);
     }
-  }, [audioBuffer, slicePoints, activeSliceIdx]);
+  }, [audioBuffer, slicePoints, activeSliceIdx, zoom, pan]);
 
   // Handle canvas mouse interactions for adding/moving markers
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -201,10 +213,10 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
     const rect = canvasRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const duration = audioBuffer.duration;
-    const clickTime = (clickX / rect.width) * duration;
+    const clickTime = pan * duration * (1 - 1 / zoom) + (clickX / rect.width) * (duration / zoom);
 
     // Check if clicked near an existing marker to drag
-    const markerThresholdSec = (12 / rect.width) * duration;
+    const markerThresholdSec = (12 / rect.width) * (duration / zoom);
     const nearbyIdx = slicePoints.findIndex((pt, idx) => idx > 0 && Math.abs(pt - clickTime) < markerThresholdSec);
 
     if (nearbyIdx !== -1) {
@@ -227,12 +239,12 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
     if (draggedMarkerIdx === null || !audioBuffer || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const clickX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-    const newTime = parseFloat(((clickX / rect.width) * audioBuffer.duration).toFixed(4));
+    const newTime = parseFloat((pan * audioBuffer.duration * (1 - 1 / zoom) + (clickX / rect.width) * (audioBuffer.duration / zoom)).toFixed(4));
 
     setSlicePoints((prev) => {
       const updated = [...prev];
-      updated[draggedMarkerIdx] = newTime;
-      return updated.sort((a, b) => a - b);
+      updated[draggedMarkerIdx] = Math.max(updated[draggedMarkerIdx - 1] + 0.005, Math.min(updated[draggedMarkerIdx + 1] ?? audioBuffer.duration - 0.005, newTime));
+      return updated;
     });
   };
 
@@ -244,7 +256,7 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
     if (!audioBuffer || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const newTime = parseFloat(((clickX / rect.width) * audioBuffer.duration).toFixed(4));
+    const newTime = parseFloat((pan * audioBuffer.duration * (1 - 1 / zoom) + (clickX / rect.width) * (audioBuffer.duration / zoom)).toFixed(4));
 
     setMode('manual');
     setSlicePoints((prev) => {
@@ -370,6 +382,10 @@ export const WaveformChopDeck: React.FC<WaveformChopDeckProps> = ({
                   ? `PLAYING SLICE #${activeSliceIdx + 1}`
                   : 'CLICK ANY SLICE TO AUDITION'}
               </span>
+            </div>
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-lg bg-black/80 p-1 border border-slate-700">
+              {[1, 2, 4, 8].map((factor) => <button key={factor} type="button" onClick={() => { setZoom(factor as 1 | 2 | 4 | 8); setPan(0.5); }} className={`px-2 py-1 rounded text-[10px] font-mono font-bold ${zoom === factor ? 'bg-amber-500 text-black' : 'text-slate-300 hover:bg-slate-800'}`}>{factor}x</button>)}
+              {zoom > 1 && <input aria-label="Waveform pan" type="range" min={0} max={1} step={0.01} value={pan} onChange={(e) => setPan(parseFloat(e.target.value))} className="w-20 accent-amber-500" />}
             </div>
           </div>
 

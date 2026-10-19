@@ -67,6 +67,7 @@ export class RC600AudioEngine {
   // Master Transport & Sync
   private isAllPlaying = false;
   private bpm = 120;
+  private trackLinkEnabled = false;
   private onStateChange: (() => void) | null = null;
 
   constructor() {
@@ -154,8 +155,21 @@ export class RC600AudioEngine {
     return this.ctx;
   }
 
+  public getTrackProgress(trackId: number): number {
+    const track = this.getTrack(trackId);
+    const nodes = this.trackNodes.get(trackId);
+    if (!track || !nodes || track.status !== 'playing' || track.durationSec <= 0 || !this.ctx) return 0;
+    const elapsed = Math.max(0, this.ctx.currentTime - nodes.startTime) * track.speed;
+    return (elapsed % track.durationSec) / track.durationSec;
+  }
+
   public setBpm(newBpm: number) {
     this.bpm = newBpm;
+  }
+
+  public setTrackLinkEnabled(enabled: boolean) {
+    this.trackLinkEnabled = enabled;
+    this.onStateChange?.();
   }
 
   // --- 1. Track Playback & Stop ---
@@ -404,10 +418,21 @@ export class RC600AudioEngine {
         offset += this.recordingChunksL[i].length;
       }
 
+      let finalizedBuffer = audioBuf;
+      const masterLength = this.getTrack(1)?.durationSec || 0;
+      if (this.trackLinkEnabled && trackId !== 1 && masterLength > 0) {
+        const linked = this.ctx.createBuffer(audioBuf.numberOfChannels, Math.max(1, Math.round(masterLength * audioBuf.sampleRate)), audioBuf.sampleRate);
+        for (let ch = 0; ch < audioBuf.numberOfChannels; ch++) {
+          const src = audioBuf.getChannelData(ch);
+          const dst = linked.getChannelData(ch);
+          for (let i = 0; i < dst.length; i++) dst[i] = src[i % src.length] || 0;
+        }
+        finalizedBuffer = linked;
+      }
       track.undoBuffer = track.audioBuffer;
-      track.audioBuffer = audioBuf;
-      track.durationSec = audioBuf.duration;
-      track.waveform = extractWaveformProfile(audioBuf, 32);
+      track.audioBuffer = finalizedBuffer;
+      track.durationSec = finalizedBuffer.duration;
+      track.waveform = extractWaveformProfile(finalizedBuffer, 32);
     }
 
     this.recordingChunksL = [];

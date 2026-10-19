@@ -65,6 +65,8 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
   const [isSyncingHardware, setIsSyncingHardware] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [activeFootswitchStomp, setActiveFootswitchStomp] = useState<number | null>(null);
+  const [trackLinkEnabled, setTrackLinkEnabled] = useState(false);
+  const [, setProgressFrame] = useState(0);
 
   // Target Pad Picker for "Bounce to SP-404"
   const [bouncePopoverTrackId, setBouncePopoverTrackId] = useState<number | null>(null);
@@ -82,6 +84,11 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
     });
     rc600AudioEngine.setOnStateChange(refreshTracks);
   }, [refreshTracks]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setProgressFrame((n) => n + 1), 80);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Sync BPM from Ableton DAW telemetry
   useEffect(() => {
@@ -314,6 +321,8 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
             <span className="text-slate-500">|</span>
             <span className="text-amber-400 font-bold">4/4</span>
           </div>
+
+          <button type="button" onClick={() => { const next = !trackLinkEnabled; setTrackLinkEnabled(next); rc600AudioEngine.setTrackLinkEnabled(next); }} className={`px-3 py-1.5 rounded-lg border text-[10px] font-mono font-black ${trackLinkEnabled ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'bg-[#121622] text-slate-400 border-slate-700'}`} title="Match newly recorded track lengths to Track 1">TRACK LINK {trackLinkEnabled ? 'ON' : 'OFF'}</button>
 
           {/* Loop Quantize Selector */}
           <div className="flex items-center gap-1 bg-[#121622] p-1 rounded-lg border border-slate-700 text-[11px] font-mono">

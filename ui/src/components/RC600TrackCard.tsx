@@ -34,6 +34,9 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
   const isRec = track.status === 'recording';
   const isDub = track.status === 'overdubbing';
   const isPlay = track.status === 'playing';
+  const progress = rc600AudioEngine.getTrackProgress(track.id);
+  const ringRadius = 22;
+  const ringCircumference = 2 * Math.PI * ringRadius;
 
   return (
     <div
@@ -60,8 +63,16 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
         </span>
       </div>
 
-      {/* Waveform Visualization Canvas & Progress */}
-      <div className="my-3 bg-[#07080e] rounded-xl p-2 border border-slate-800/80 flex flex-col justify-between h-24 relative overflow-hidden">
+      {/* Loop position ring and waveform */}
+      <div className="flex items-center gap-3 my-2">
+        <div className="relative w-14 h-14 shrink-0">
+          <svg viewBox="0 0 56 56" className="w-full h-full -rotate-90">
+            <circle cx="28" cy="28" r={ringRadius} fill="none" stroke="#273244" strokeWidth="4" />
+            <circle cx="28" cy="28" r={ringRadius} fill="none" stroke={isDub ? '#f59e0b' : isPlay ? '#10b981' : '#38bdf8'} strokeWidth="4" strokeLinecap="round" strokeDasharray={ringCircumference} strokeDashoffset={ringCircumference * (1 - progress)} className="transition-[stroke-dashoffset] duration-75" />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-[9px] font-mono text-slate-300">{Math.round(progress * 100)}%</span>
+        </div>
+        <div className="flex-1 min-w-0 my-1 bg-[#07080e] rounded-xl p-2 border border-slate-800/80 flex flex-col justify-between h-24 relative overflow-hidden">
         {/* Waveform Bars */}
         <div className="flex items-center justify-between h-14 w-full gap-0.5 px-1">
           {track.waveform.map((amp, wIdx) => {
@@ -91,6 +102,7 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
           <span>{track.durationSec > 0 ? `${track.durationSec.toFixed(2)}s` : '0.00s'}</span>
           <span className="text-slate-500">{track.isOneShot ? '1-SHOT' : 'LOOP'}</span>
           <span className="text-slate-300 font-bold">{track.speed}x</span>
+        </div>
         </div>
       </div>
 
@@ -185,6 +197,19 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
         >
           CLR
         </button>
+      </div>
+
+      {/* Dedicated undo/redo state controls; the engine keeps the two most recent buffers as a toggle pair. */}
+      <div className="grid grid-cols-2 gap-1 my-1">
+        <button type="button" onClick={() => rc600AudioEngine.undoTrack(track.id)} disabled={!track.undoBuffer} className="rounded-lg border py-1 text-[9px] font-mono font-black bg-[#10202a] text-cyan-300 border-cyan-800/70 disabled:opacity-30">UNDO</button>
+        <button type="button" onClick={() => rc600AudioEngine.undoTrack(track.id)} disabled={!track.undoBuffer} className="rounded-lg border py-1 text-[9px] font-mono font-black bg-[#10202a] text-sky-300 border-sky-800/70 disabled:opacity-30">REDO</button>
+      </div>
+
+      {/* Dedicated Boss-style transport LEDs */}
+      <div className="grid grid-cols-3 gap-1 my-1">
+        <button type="button" onClick={() => isDub ? rc600AudioEngine.stopOverdub(track.id) : rc600AudioEngine.startOverdub(track.id)} disabled={!track.audioBuffer} className={`rounded-lg border py-1.5 text-[9px] font-mono font-black ${isDub ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_10px_#f59e0b]' : 'bg-[#251c0b] text-amber-300 border-amber-700/60'} disabled:opacity-30`}>DUB</button>
+        <button type="button" onClick={() => rc600AudioEngine.playTrack(track.id)} disabled={!track.audioBuffer} className={`rounded-lg border py-1.5 text-[9px] font-mono font-black ${isPlay ? 'bg-emerald-500 text-black border-emerald-300 shadow-[0_0_10px_#10b981]' : 'bg-[#0e211a] text-emerald-300 border-emerald-700/60'} disabled:opacity-30`}>PLAY</button>
+        <button type="button" onClick={() => rc600AudioEngine.stopTrack(track.id)} className="rounded-lg border py-1.5 text-[9px] font-mono font-black bg-[#271012] text-rose-300 border-rose-800/70">STOP</button>
       </div>
 
       {/* Primary Footswitch Action Trigger Button */}

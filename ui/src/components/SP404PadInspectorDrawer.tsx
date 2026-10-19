@@ -15,6 +15,14 @@ export const SP404PadInspectorDrawer: React.FC<SP404PadInspectorDrawerProps> = (
 }) => {
   if (!editingPad) return null;
 
+  const peak = editingPad.audioBuffer ? Math.max(...Array.from({ length: editingPad.audioBuffer.numberOfChannels }, (_, channel) => {
+    const data = editingPad.audioBuffer!.getChannelData(channel);
+    let max = 0;
+    for (let i = 0; i < data.length; i++) max = Math.max(max, Math.abs(data[i]));
+    return max;
+  })) : 0;
+  const peakDb = peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-mono text-xs">
       <div className="bg-[#151822] border-2 border-slate-600 rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
@@ -48,6 +56,12 @@ export const SP404PadInspectorDrawer: React.FC<SP404PadInspectorDrawerProps> = (
               }}
               className="w-full bg-[#0d0f17] border border-slate-600 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-[#ff5500]"
             />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-700 bg-[#0d0f17] p-3 text-center font-mono">
+            <div><div className="text-[9px] text-slate-500">SAMPLE RATE</div><div className="text-amber-300 font-bold">{editingPad.audioBuffer ? `${editingPad.audioBuffer.sampleRate.toLocaleString()} Hz` : '—'}</div></div>
+            <div><div className="text-[9px] text-slate-500">BIT DEPTH</div><div className="text-sky-300 font-bold">{editingPad.audioBuffer ? '32-bit float' : '—'}</div></div>
+            <div><div className="text-[9px] text-slate-500">PEAK</div><div className="text-emerald-300 font-bold">{editingPad.audioBuffer ? (Number.isFinite(peakDb) ? `${peakDb.toFixed(1)} dB` : '−∞ dB') : '—'}</div></div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
