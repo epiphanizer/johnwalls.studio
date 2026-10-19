@@ -11,10 +11,12 @@
  *   make push
  */
 
-import { existsSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { verifyDeployedApp } from './deploymentSmokeCheck.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -68,6 +70,44 @@ async function main() {
     process.exit(1);
   }
 
+  let gitRev = 'unknown';
+  let releaseVersion;
+  const buildInfoPath = resolve(DIST_DIR, 'build-info.json');
+  if (skipBuild) {
+    if (!existsSync(buildInfoPath)) {
+      console.error('❌ --skip-build requires a dist/build-info.json created by a prior push build.');
+      process.exit(1);
+    }
+    try {
+      const previousBuild = JSON.parse(readFileSync(buildInfoPath, 'utf-8'));
+      if (!previousBuild.version || !previousBuild.indexSha256 || !Array.isArray(previousBuild.assets)) {
+        throw new Error('missing build fingerprint');
+      }
+      gitRev = previousBuild.gitRevision || 'unknown';
+      releaseVersion = previousBuild.version;
+    } catch {
+      console.error('❌ --skip-build requires valid dist/build-info.json build metadata.');
+      process.exit(1);
+    }
+  } else {
+    let hasUncommittedChanges = false;
+    try {
+      gitRev = execSync('git rev-parse --short HEAD', { cwd: ROOT_DIR, encoding: 'utf-8' }).trim();
+      hasUncommittedChanges = Boolean(execSync('git status --porcelain', { cwd: ROOT_DIR, encoding: 'utf-8' }).trim());
+    } catch {}
+    releaseVersion = `v1.0-${gitRev}${hasUncommittedChanges ? '-dirty' : ''}-${Date.now()}`;
+    const builtHtml = readFileSync(indexPath, 'utf-8');
+    const assets = [...builtHtml.matchAll(/(?:src|href)="([^"]+\.(?:m?js|css))"/g)].map((match) => match[1]);
+    if (assets.length === 0) {
+      console.error('❌ Built index.html does not reference any JavaScript or CSS assets.');
+      process.exit(1);
+    }
+    writeFileSync(
+      buildInfoPath,
+      `${JSON.stringify({ name: 'johnwalls.studio', version: releaseVersion, gitRevision: gitRev, dirty: hasUncommittedChanges, indexSha256: createHash('sha256').update(builtHtml).digest('hex'), assets, createdAt: new Date().toISOString() }, null, 2)}\n`
+    );
+  }
+
   // 2. Package into tarball
   console.log('\n📦 [2/4] Packaging web bundle from dist/...');
   try {
@@ -88,14 +128,9 @@ async function main() {
   const bundleBuffer = readFileSync(TMP_BUNDLE);
   const bundleBlob = new Blob([bundleBuffer], { type: 'application/gzip' });
 
-  let gitRev = 'unknown';
-  try {
-    gitRev = execSync('git rev-parse --short HEAD', { cwd: ROOT_DIR, encoding: 'utf-8' }).trim();
-  } catch {}
-
   const formData = new FormData();
   formData.append('bundle', bundleBlob, 'studio-bundle.tar.gz');
-  formData.append('version', `v1.0-${gitRev}-${Date.now()}`);
+  formData.append('version', releaseVersion);
   if (deployToken) {
     formData.append('deployToken', deployToken);
   }
@@ -113,29 +148,30 @@ async function main() {
     try {
       json = JSON.parse(responseText);
     } catch {
-      console.error(`❌ Unexpected response from server (${res.status}):\n${responseText}`);
-      process.exit(1);
+      throw new Error(`Unexpected response from server (${res.status}): ${responseText}`);
     }
 
     if (!res.ok || !(json.ok || json.success)) {
-      console.error(`❌ Deployment rejected by server (${res.status}):`, json.error || json.message || responseText);
-      process.exit(1);
+      throw new Error(`Deployment rejected by server (${res.status}): ${json.error || json.message || responseText}`);
     }
 
     const manifest = json.manifest || json.deployManifest || {};
+    const directUrl = json.directUrl || manifest.directUrl || 'https://johnwalls.studio/studio-app/index.html';
+    const liveBuildInfo = await verifyDeployedApp({ directUrl, expectedVersion: releaseVersion });
+
     console.log('\n🎉 [4/4] DEPLOYMENT COMPLETE & VERIFIED LIVE!');
     console.log(`──────────────────────────────────────────────────────────`);
     console.log(`  Status:      LIVE`);
     console.log(`  Target:      ${deployUrl}`);
     console.log(`  Public URL:  ${json.publicUrl || manifest.publicUrl || 'https://johnwalls.studio/app'}`);
-    console.log(`  Direct App:  ${json.directUrl || manifest.directUrl || 'https://johnwalls.studio/studio-app/index.html'}`);
-    console.log(`  Version:     ${manifest.version || gitRev}`);
+    console.log(`  Direct App:  ${directUrl}`);
+    console.log(`  Version:     ${liveBuildInfo.version}`);
     console.log(`  Files:       ${manifest.fileCount || json.filesDeployed || 0} files extracted`);
     console.log(`  Timestamp:   ${manifest.deployedAt || new Date().toISOString()}`);
     console.log(`──────────────────────────────────────────────────────────\n`);
   } catch (err) {
-    console.error('❌ Network error during deploy transmission:', err.message || err);
-    process.exit(1);
+    console.error('❌ Deployment or live verification failed:', err.message || err);
+    process.exitCode = 1;
   } finally {
     // Cleanup temporary bundle
     try {

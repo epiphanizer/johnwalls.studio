@@ -17,6 +17,7 @@ export interface RC600Track {
   status: RC600TrackStatus;
   audioBuffer: AudioBuffer | null;
   undoBuffer: AudioBuffer | null;
+  redoBuffer: AudioBuffer | null;
   volume: number; // 0.0 to 1.5
   pan: number; // -1.0 to 1.0
   speed: 0.5 | 1.0 | 2.0;
@@ -27,6 +28,28 @@ export interface RC600Track {
   waveform: number[];
   isMuted: boolean;
   isSoloed: boolean;
+}
+
+/** Mix captured input into a loop, wrapping at the loop boundary. */
+export function mixLoopSamples(
+  base: Float32Array,
+  chunks: Float32Array[],
+  inputSampleRate: number,
+  loopSampleRate: number,
+  startOffset: number,
+  playbackRate: number
+): Float32Array {
+  const mixed = new Float32Array(base);
+  if (!mixed.length || inputSampleRate <= 0 || loopSampleRate <= 0) return mixed;
+  let inputIndex = 0;
+  for (const chunk of chunks) {
+    for (const sample of chunk) {
+      const loopIndex = (startOffset + Math.floor(inputIndex * loopSampleRate * playbackRate / inputSampleRate)) % mixed.length;
+      mixed[loopIndex] += sample;
+      inputIndex++;
+    }
+  }
+  return mixed;
 }
 
 const DEFAULT_TRACK_NAMES = [
@@ -53,6 +76,7 @@ export class RC600AudioEngine {
       panNode: StereoPannerNode;
       sourceNode: AudioBufferSourceNode | null;
       startTime: number;
+      startOffsetSec: number;
     }
   > = new Map();
 
@@ -63,11 +87,14 @@ export class RC600AudioEngine {
   private recordingChunksR: Float32Array[] = [];
   private recordProcessor: ScriptProcessorNode | null = null;
   private recordMuteGain: GainNode | null = null;
+  private activeCaptureMode: 'record' | 'overdub' | null = null;
+  private overdubStartOffsetSec = 0;
 
   // Master Transport & Sync
   private isAllPlaying = false;
   private bpm = 120;
   private trackLinkEnabled = false;
+  private quantizeBars: 1 | 2 | 4 | 0 = 4;
   private onStateChange: (() => void) | null = null;
 
   constructor() {
@@ -85,6 +112,7 @@ export class RC600AudioEngine {
       status: 'empty',
       audioBuffer: null,
       undoBuffer: null,
+      redoBuffer: null,
       volume: 1.0,
       pan: 0.0,
       speed: 1.0,
@@ -126,7 +154,8 @@ export class RC600AudioEngine {
           gainNode,
           panNode,
           sourceNode: null,
-          startTime: 0
+          startTime: 0,
+          startOffsetSec: 0
         });
       }
 
@@ -158,23 +187,67 @@ export class RC600AudioEngine {
   public getTrackProgress(trackId: number): number {
     const track = this.getTrack(trackId);
     const nodes = this.trackNodes.get(trackId);
-    if (!track || !nodes || track.status !== 'playing' || track.durationSec <= 0 || !this.ctx) return 0;
-    const elapsed = Math.max(0, this.ctx.currentTime - nodes.startTime) * track.speed;
-    return (elapsed % track.durationSec) / track.durationSec;
+    if (!track || !nodes || !nodes.sourceNode || !['playing', 'overdubbing'].includes(track.status) || track.durationSec <= 0 || !this.ctx) return 0;
+    const playbackRate = Math.max(0.01, this.getEffectivePlaybackRate(track));
+    const loopDuration = track.durationSec / playbackRate;
+    const elapsed = Math.max(0, this.ctx.currentTime - nodes.startTime);
+    const position = (nodes.startOffsetSec || 0) + elapsed * playbackRate;
+    return loopDuration > 0 ? (position % track.durationSec) / track.durationSec : 0;
   }
 
   public setBpm(newBpm: number) {
+    if (!Number.isFinite(newBpm) || newBpm <= 0 || this.bpm === newBpm) return;
     this.bpm = newBpm;
+    this.updateLinkedPlaybackRates();
+  }
+
+  public setQuantizeBars(bars: 1 | 2 | 4 | 0) {
+    this.quantizeBars = bars;
   }
 
   public setTrackLinkEnabled(enabled: boolean) {
+    if (this.trackLinkEnabled === enabled) return;
     this.trackLinkEnabled = enabled;
+    const master = this.getTrack(1);
+    if (enabled && master?.durationSec && this.bpm > 0) {
+      master.bars = Math.max(1, Math.round((master.durationSec * this.bpm) / 240));
+    }
+    this.updateLinkedPlaybackRates();
     this.onStateChange?.();
+  }
+
+  public isTrackLinkEnabled(): boolean {
+    return this.trackLinkEnabled;
+  }
+
+  private getTargetLoopDuration(track: RC600Track): number {
+    if (!this.trackLinkEnabled) return track.durationSec;
+    const master = this.getTrack(1);
+    if (!master || !master.durationSec) return track.durationSec;
+    const bars = Math.max(1, master.bars || 1);
+    return this.bpm > 0 ? (bars * 240) / this.bpm : master.durationSec;
+  }
+
+  private getEffectivePlaybackRate(track: RC600Track): number {
+    if (!track.audioBuffer || track.durationSec <= 0) return track.speed;
+    if (!this.trackLinkEnabled) return track.speed;
+    const targetDuration = this.getTargetLoopDuration(track);
+    return targetDuration > 0 ? track.durationSec / targetDuration : track.speed;
+  }
+
+  private updateLinkedPlaybackRates() {
+    if (!this.ctx) return;
+    for (const track of this.tracks) {
+      const source = this.trackNodes.get(track.id)?.sourceNode;
+      if (source && (track.status === 'playing' || track.status === 'overdubbing')) {
+        source.playbackRate.setTargetAtTime(this.getEffectivePlaybackRate(track), this.ctx.currentTime, 0.02);
+      }
+    }
   }
 
   // --- 1. Track Playback & Stop ---
 
-  public playTrack(trackId: number) {
+  public playTrack(trackId: number, startOffsetSec = 0) {
     const track = this.getTrack(trackId);
     if (!track || !track.audioBuffer || !this.ctx) return;
 
@@ -191,13 +264,15 @@ export class RC600AudioEngine {
     const source = this.ctx.createBufferSource();
     source.buffer = bufToPlay;
     source.loop = !track.isOneShot;
-    source.playbackRate.setValueAtTime(track.speed, this.ctx.currentTime);
+    source.playbackRate.setValueAtTime(this.getEffectivePlaybackRate(track), this.ctx.currentTime);
 
     source.connect(nodes.gainNode);
-    source.start(0);
+    const safeOffset = ((startOffsetSec % track.durationSec) + track.durationSec) % track.durationSec;
+    source.start(0, safeOffset);
 
     nodes.sourceNode = source;
     nodes.startTime = this.ctx.currentTime;
+    nodes.startOffsetSec = safeOffset;
     track.status = 'playing';
 
     source.onended = () => {
@@ -213,6 +288,8 @@ export class RC600AudioEngine {
   public stopTrack(trackId: number) {
     const track = this.getTrack(trackId);
     if (!track) return;
+
+    if (track.status === 'overdubbing') this.stopOverdub(trackId);
 
     this.stopTrackVoice(trackId);
     track.status = track.audioBuffer ? 'stopped' : 'empty';
@@ -278,7 +355,7 @@ export class RC600AudioEngine {
     track.speed = speed;
     const nodes = this.trackNodes.get(trackId);
     if (nodes && nodes.sourceNode) {
-      nodes.sourceNode.playbackRate.setValueAtTime(speed, this.ctx.currentTime);
+      nodes.sourceNode.playbackRate.setValueAtTime(this.getEffectivePlaybackRate(track), this.ctx.currentTime);
     }
     this.onStateChange?.();
   }
@@ -292,6 +369,7 @@ export class RC600AudioEngine {
     } else {
       this.onStateChange?.();
     }
+    this.updateLinkedPlaybackRates();
   }
 
   public toggleTrackMute(trackId: number) {
@@ -308,27 +386,51 @@ export class RC600AudioEngine {
   public clearTrack(trackId: number) {
     const track = this.getTrack(trackId);
     if (!track) return;
+    if (track.status === 'overdubbing') this.stopOverdub(trackId);
     this.stopTrackVoice(trackId);
     track.audioBuffer = null;
     track.undoBuffer = null;
+    track.redoBuffer = null;
     track.status = 'empty';
     track.durationSec = 0;
     track.waveform = new Array(32).fill(0);
     this.onStateChange?.();
   }
 
-  public undoTrack(trackId: number) {
-    const track = this.getTrack(trackId);
-    if (!track || !track.undoBuffer) return;
-    const current = track.audioBuffer;
-    track.audioBuffer = track.undoBuffer;
-    track.undoBuffer = current;
-    track.waveform = extractWaveformProfile(track.audioBuffer, 32);
-    if (track.status === 'playing') {
-      this.playTrack(trackId);
+  private restoreTrackBuffer(track: RC600Track, buffer: AudioBuffer | null) {
+    if (!buffer) return;
+    track.audioBuffer = buffer;
+    track.durationSec = buffer.duration;
+    track.waveform = extractWaveformProfile(buffer, 32);
+    if (track.status === 'playing' || track.status === 'overdubbing') {
+      const wasOverdubbing = track.status === 'overdubbing';
+      this.playTrack(track.id);
+      if (wasOverdubbing) {
+        track.status = 'overdubbing';
+        this.onStateChange?.();
+      }
     } else {
       this.onStateChange?.();
     }
+    this.updateLinkedPlaybackRates();
+  }
+
+  public undoTrack(trackId: number) {
+    const track = this.getTrack(trackId);
+    if (!track || !track.undoBuffer) return;
+    track.redoBuffer = track.audioBuffer;
+    track.audioBuffer = track.undoBuffer;
+    track.undoBuffer = null;
+    this.restoreTrackBuffer(track, track.audioBuffer);
+  }
+
+  public redoTrack(trackId: number) {
+    const track = this.getTrack(trackId);
+    if (!track || !track.redoBuffer) return;
+    track.undoBuffer = track.audioBuffer;
+    track.audioBuffer = track.redoBuffer;
+    track.redoBuffer = null;
+    this.restoreTrackBuffer(track, track.audioBuffer);
   }
 
   // --- 3. Footswitch Workflow (Rec -> Overdub -> Play -> Stop) ---
@@ -359,9 +461,10 @@ export class RC600AudioEngine {
 
   public startRecord(trackId: number) {
     const track = this.getTrack(trackId);
-    if (!track || !this.ctx) return;
+    if (!track || !this.ctx || this.activeRecordingTrackId !== null) return;
 
     this.activeRecordingTrackId = trackId;
+    this.activeCaptureMode = 'record';
     track.status = 'recording';
     this.recordingChunksL = [];
     this.recordingChunksR = [];
@@ -390,20 +493,8 @@ export class RC600AudioEngine {
 
   public stopRecord(trackId: number, autoPlay = true) {
     const track = this.getTrack(trackId);
-    if (!track || !this.ctx || this.activeRecordingTrackId !== trackId) return;
-
-    if (this.recordProcessor) {
-      try {
-        this.recordProcessor.disconnect();
-      } catch {}
-      this.recordProcessor = null;
-    }
-    if (this.recordMuteGain) {
-      try {
-        this.recordMuteGain.disconnect();
-      } catch {}
-      this.recordMuteGain = null;
-    }
+    if (!track || !this.ctx || this.activeRecordingTrackId !== trackId || this.activeCaptureMode !== 'record') return;
+    this.stopCaptureNodes();
 
     const totalSamples = this.recordingChunksL.reduce((acc, c) => acc + c.length, 0);
     if (totalSamples > 256) {
@@ -418,26 +509,26 @@ export class RC600AudioEngine {
         offset += this.recordingChunksL[i].length;
       }
 
-      let finalizedBuffer = audioBuf;
-      const masterLength = this.getTrack(1)?.durationSec || 0;
-      if (this.trackLinkEnabled && trackId !== 1 && masterLength > 0) {
-        const linked = this.ctx.createBuffer(audioBuf.numberOfChannels, Math.max(1, Math.round(masterLength * audioBuf.sampleRate)), audioBuf.sampleRate);
-        for (let ch = 0; ch < audioBuf.numberOfChannels; ch++) {
-          const src = audioBuf.getChannelData(ch);
-          const dst = linked.getChannelData(ch);
-          for (let i = 0; i < dst.length; i++) dst[i] = src[i % src.length] || 0;
-        }
-        finalizedBuffer = linked;
-      }
       track.undoBuffer = track.audioBuffer;
-      track.audioBuffer = finalizedBuffer;
-      track.durationSec = finalizedBuffer.duration;
-      track.waveform = extractWaveformProfile(finalizedBuffer, 32);
+      track.redoBuffer = null;
+      track.audioBuffer = audioBuf;
+      track.durationSec = audioBuf.duration;
+      if (this.trackLinkEnabled) {
+        const master = this.getTrack(1);
+        if (trackId !== 1 && master?.durationSec) {
+          track.bars = master.bars;
+        } else {
+          track.bars = this.quantizeBars || Math.max(1, Math.round((audioBuf.duration * this.bpm) / 240));
+        }
+      }
+      track.waveform = extractWaveformProfile(audioBuf, 32);
+      this.updateLinkedPlaybackRates();
     }
 
     this.recordingChunksL = [];
     this.recordingChunksR = [];
     this.activeRecordingTrackId = null;
+    this.activeCaptureMode = null;
 
     if (autoPlay && track.audioBuffer) {
       this.playTrack(trackId);
@@ -449,16 +540,76 @@ export class RC600AudioEngine {
 
   public startOverdub(trackId: number) {
     const track = this.getTrack(trackId);
-    if (!track || !track.audioBuffer) return;
+    if (!track || !track.audioBuffer || !this.ctx || this.activeRecordingTrackId !== null) return;
+    const nodes = this.trackNodes.get(trackId);
+    if (!nodes?.sourceNode) this.playTrack(trackId);
+    const activeNodes = this.trackNodes.get(trackId);
+    this.overdubStartOffsetSec = activeNodes?.sourceNode
+      ? this.getTrackProgress(trackId) * track.durationSec
+      : 0;
+    this.activeRecordingTrackId = trackId;
+    this.activeCaptureMode = 'overdub';
+    this.recordingChunksL = [];
+    this.recordingChunksR = [];
+    this.startCaptureNodes();
     track.status = 'overdubbing';
     this.onStateChange?.();
   }
 
   public stopOverdub(trackId: number) {
     const track = this.getTrack(trackId);
-    if (!track) return;
+    if (!track || !this.ctx || this.activeRecordingTrackId !== trackId || this.activeCaptureMode !== 'overdub') return;
+    this.stopCaptureNodes();
+    const resumeOffsetSec = this.getTrackProgress(trackId) * track.durationSec;
+    const capturedSamples = this.recordingChunksL.reduce((sum, chunk) => sum + chunk.length, 0);
+    const original = track.audioBuffer;
+    if (original && capturedSamples > 0) {
+      const mixed = this.ctx.createBuffer(original.numberOfChannels, original.length, original.sampleRate);
+      const inputRate = this.ctx.sampleRate;
+      const offset = Math.round(this.overdubStartOffsetSec * original.sampleRate) % original.length;
+      const playbackRate = this.getEffectivePlaybackRate(track);
+      for (let channel = 0; channel < original.numberOfChannels; channel++) {
+        const chunks = channel === 1 ? this.recordingChunksR : this.recordingChunksL;
+        mixed.getChannelData(channel).set(mixLoopSamples(
+          original.getChannelData(channel), chunks, inputRate, original.sampleRate, offset, playbackRate
+        ));
+      }
+      track.undoBuffer = original;
+      track.redoBuffer = null;
+      track.audioBuffer = mixed;
+      track.durationSec = mixed.duration;
+      track.waveform = extractWaveformProfile(mixed, 32);
+    }
+    this.recordingChunksL = [];
+    this.recordingChunksR = [];
+    this.activeRecordingTrackId = null;
+    this.activeCaptureMode = null;
     track.status = 'playing';
+    if (track.audioBuffer) this.playTrack(trackId, resumeOffsetSec);
     this.onStateChange?.();
+  }
+
+  private startCaptureNodes() {
+    if (!this.ctx) return;
+    this.recordProcessor = this.ctx.createScriptProcessor(4096, 2, 2);
+    this.recordMuteGain = this.ctx.createGain();
+    this.recordMuteGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    this.recordProcessor.onaudioprocess = (e) => {
+      const inL = e.inputBuffer.getChannelData(0);
+      const inR = e.inputBuffer.numberOfChannels > 1 ? e.inputBuffer.getChannelData(1) : inL;
+      this.recordingChunksL.push(new Float32Array(inL));
+      this.recordingChunksR.push(new Float32Array(inR));
+    };
+    sp404AudioEngine.getMasterGain()?.connect(this.recordProcessor);
+    this.recordProcessor.connect(this.recordMuteGain);
+    this.recordMuteGain.connect(this.ctx.destination);
+  }
+
+  private stopCaptureNodes() {
+    try { this.recordProcessor?.disconnect(); } catch {}
+    try { this.recordMuteGain?.disconnect(); } catch {}
+    this.recordProcessor = null;
+    this.recordMuteGain = null;
   }
 
   // --- 5. SP-404 <-> RC-600 Bidirectional Bridge ---
@@ -489,11 +640,18 @@ export class RC600AudioEngine {
     if (!track || !pad || !pad.audioBuffer) return;
 
     track.undoBuffer = track.audioBuffer;
+    track.redoBuffer = null;
     track.audioBuffer = pad.audioBuffer;
     track.name = `T${trackId}: ${pad.label || `Pad ${bank}${padId}`}`;
     track.durationSec = pad.audioBuffer.duration;
+    if (this.trackLinkEnabled && track.id !== 1 && this.getTrack(1)?.durationSec) {
+      track.bars = this.getTrack(1)!.bars;
+    } else if (this.trackLinkEnabled && track.id === 1) {
+      track.bars = Math.max(1, Math.round((track.durationSec * this.bpm) / 240));
+    }
     track.status = 'stopped';
     track.waveform = extractWaveformProfile(pad.audioBuffer, 32);
+    this.updateLinkedPlaybackRates();
     this.onStateChange?.();
   }
 
@@ -505,11 +663,18 @@ export class RC600AudioEngine {
     if (!track) return;
 
     track.undoBuffer = track.audioBuffer;
+    track.redoBuffer = null;
     track.audioBuffer = buffer;
     if (trackName) track.name = trackName;
     track.durationSec = buffer.duration;
+    if (this.trackLinkEnabled && track.id !== 1 && this.getTrack(1)?.durationSec) {
+      track.bars = this.getTrack(1)!.bars;
+    } else if (this.trackLinkEnabled && track.id === 1) {
+      track.bars = Math.max(1, Math.round((track.durationSec * this.bpm) / 240));
+    }
     track.status = 'stopped';
     track.waveform = extractWaveformProfile(buffer, 32);
+    this.updateLinkedPlaybackRates();
     this.onStateChange?.();
   }
 

@@ -65,7 +65,7 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
   const [isSyncingHardware, setIsSyncingHardware] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [activeFootswitchStomp, setActiveFootswitchStomp] = useState<number | null>(null);
-  const [trackLinkEnabled, setTrackLinkEnabled] = useState(false);
+  const [trackLinkEnabled, setTrackLinkEnabled] = useState(() => rc600AudioEngine.isTrackLinkEnabled());
   const [, setProgressFrame] = useState(0);
 
   // Target Pad Picker for "Bounce to SP-404"
@@ -86,9 +86,10 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
   }, [refreshTracks]);
 
   useEffect(() => {
+    if (!tracks.some((track) => track.status === 'playing' || track.status === 'overdubbing')) return;
     const timer = window.setInterval(() => setProgressFrame((n) => n + 1), 80);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [tracks]);
 
   // Sync BPM from Ableton DAW telemetry
   useEffect(() => {
@@ -316,13 +317,13 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
           {/* Ableton Live DAW Sync Badge */}
           <div className="flex items-center gap-2 bg-[#121622] px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-mono">
             <Clock size={13} className="text-cyan-400" />
-            <span className="text-slate-400">DAW SYNC:</span>
+            <span className="text-slate-400">DAW TEMPO:</span>
             <span className="text-cyan-300 font-bold">{(telemetry?.bpm ?? 120).toFixed(1)} BPM</span>
             <span className="text-slate-500">|</span>
             <span className="text-amber-400 font-bold">4/4</span>
           </div>
 
-          <button type="button" onClick={() => { const next = !trackLinkEnabled; setTrackLinkEnabled(next); rc600AudioEngine.setTrackLinkEnabled(next); }} className={`px-3 py-1.5 rounded-lg border text-[10px] font-mono font-black ${trackLinkEnabled ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'bg-[#121622] text-slate-400 border-slate-700'}`} title="Match newly recorded track lengths to Track 1">TRACK LINK {trackLinkEnabled ? 'ON' : 'OFF'}</button>
+          <button type="button" onClick={() => { const next = !trackLinkEnabled; setTrackLinkEnabled(next); rc600AudioEngine.setTrackLinkEnabled(next); }} className={`px-3 py-1.5 rounded-lg border text-[10px] font-mono font-black ${trackLinkEnabled ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'bg-[#121622] text-slate-400 border-slate-700'}`} title="Lock active and newly recorded tracks to Track 1 loop length and DAW tempo">MASTER TEMPO / TRACK LINK {trackLinkEnabled ? 'ON' : 'OFF'}</button>
 
           {/* Loop Quantize Selector */}
           <div className="flex items-center gap-1 bg-[#121622] p-1 rounded-lg border border-slate-700 text-[11px] font-mono">
@@ -330,7 +331,10 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               <button
                 key={opt}
                 type="button"
-                onClick={() => setQuantize(opt)}
+                onClick={() => {
+                  setQuantize(opt);
+                  rc600AudioEngine.setQuantizeBars(opt === 'Free Loop' ? 0 : Number.parseInt(opt, 10) as 1 | 2 | 4);
+                }}
                 className={`px-2 py-0.5 rounded transition ${
                   quantize === opt
                     ? 'bg-rose-500 text-white font-bold shadow'
@@ -624,7 +628,7 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               </div>
 
               <div className="w-full">
-                <span className="font-mono text-xs font-bold text-white block">UNDO / REDO</span>
+                <span className="font-mono text-xs font-bold text-white block">UNDO ACTIVE TRACK</span>
                 <span className="text-[10px] font-mono text-slate-400 block">KEY [U]</span>
               </div>
             </button>

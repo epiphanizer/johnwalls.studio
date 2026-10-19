@@ -1,0 +1,40 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: UI typecheck, behavior tests, and production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+        working-directory: ui
+      - run: npm test
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+
+  engine:
+    name: C++ engine unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure engine
+        run: cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release
+      - name: Build engine tests
+        run: cmake --build engine/build --config Release --parallel 2
+      - name: Run engine tests
+        run: ctest --test-dir engine/build --output-on-failure

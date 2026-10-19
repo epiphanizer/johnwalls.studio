@@ -34,6 +34,7 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
   const isRec = track.status === 'recording';
   const isDub = track.status === 'overdubbing';
   const isPlay = track.status === 'playing';
+  const isTrackLinked = rc600AudioEngine.isTrackLinkEnabled();
   const progress = rc600AudioEngine.getTrackProgress(track.id);
   const ringRadius = 22;
   const ringCircumference = 2 * Math.PI * ringRadius;
@@ -158,7 +159,8 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
               ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
               : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-white'
           }`}
-          title="Toggle Speed (0.5x Half, 1.0x Normal, 2.0x Double)"
+          disabled={isTrackLinked}
+          title={isTrackLinked ? 'Track speed is governed by the Master Tempo / Track Link lock' : 'Toggle Speed (0.5x Half, 1.0x Normal, 2.0x Double)'}
         >
           {track.speed}x
         </button>
@@ -202,7 +204,7 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
       {/* Dedicated undo/redo state controls; the engine keeps the two most recent buffers as a toggle pair. */}
       <div className="grid grid-cols-2 gap-1 my-1">
         <button type="button" onClick={() => rc600AudioEngine.undoTrack(track.id)} disabled={!track.undoBuffer} className="rounded-lg border py-1 text-[9px] font-mono font-black bg-[#10202a] text-cyan-300 border-cyan-800/70 disabled:opacity-30">UNDO</button>
-        <button type="button" onClick={() => rc600AudioEngine.undoTrack(track.id)} disabled={!track.undoBuffer} className="rounded-lg border py-1 text-[9px] font-mono font-black bg-[#10202a] text-sky-300 border-sky-800/70 disabled:opacity-30">REDO</button>
+        <button type="button" onClick={() => rc600AudioEngine.redoTrack(track.id)} disabled={!track.redoBuffer} className="rounded-lg border py-1 text-[9px] font-mono font-black bg-[#10202a] text-sky-300 border-sky-800/70 disabled:opacity-30">REDO</button>
       </div>
 
       {/* Dedicated Boss-style transport LEDs */}
