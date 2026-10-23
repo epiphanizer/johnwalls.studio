@@ -240,12 +240,12 @@ export const TopMenuBar: React.FC<TopMenuBarProps> = React.memo(({
             onClick={() => onSelectWorkspace?.('rc600')}
             className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition flex items-center gap-1.5 ${
               activeWorkspace === 'rc600'
-                ? 'bg-rose-500/25 text-rose-300 border border-rose-500/60 shadow-[0_0_10px_rgba(244,63,94,0.25)]'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-[#161a29]'
+                ? 'bg-red-600/30 text-red-200 border border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.35)]'
+                : 'text-slate-400 hover:text-red-300 hover:bg-[#1a0508]'
             }`}
             title="Boss RC-600 6-Track Loop Station & Virtual Floorboard"
           >
-            <Radio size={13} className={activeWorkspace === 'rc600' ? 'text-rose-400' : 'text-slate-400'} />
+            <Radio size={13} className={activeWorkspace === 'rc600' ? 'text-red-400' : 'text-slate-400'} />
             <span>RC-600</span>
           </button>
 

@@ -228,62 +228,62 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
     switch (status) {
       case 'recording':
         return {
-          bg: 'bg-rose-500/20 text-rose-300 border-rose-500/60 shadow-[0_0_12px_rgba(244,63,94,0.4)]',
-          dot: 'bg-rose-500 shadow-[0_0_8px_#f43f5e]',
+          bg: 'bg-red-500/25 text-red-200 border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.4)]',
+          dot: 'bg-red-500 shadow-[0_0_8px_#ef4444]',
           label: 'REC',
-          ring: 'border-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.35)]'
+          ring: 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]'
         };
       case 'overdubbing':
         return {
-          bg: 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.4)]',
+          bg: 'bg-amber-500/25 text-amber-200 border-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]',
           dot: 'bg-amber-500 shadow-[0_0_8px_#f59e0b]',
           label: 'DUB',
           ring: 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.35)]'
         };
       case 'playing':
         return {
-          bg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.4)]',
+          bg: 'bg-emerald-500/25 text-emerald-200 border-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.4)]',
           dot: 'bg-emerald-400 shadow-[0_0_8px_#10b981]',
           label: 'PLAY',
           ring: 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
         };
       case 'stopped':
         return {
-          bg: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40',
-          dot: 'bg-cyan-400',
+          bg: 'bg-red-950/70 text-red-300 border-red-800/70',
+          dot: 'bg-red-400 shadow-[0_0_6px_#f87171]',
           label: 'READY',
-          ring: 'border-cyan-500/40'
+          ring: 'border-red-800/70'
         };
       default:
         return {
-          bg: 'bg-slate-800 text-slate-500 border-slate-700',
-          dot: 'bg-slate-600',
+          bg: 'bg-[#180406] text-red-400/50 border-red-950',
+          dot: 'bg-red-900',
           label: 'EMPTY',
-          ring: 'border-slate-800'
+          ring: 'border-red-950/80'
         };
     }
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0b0d13] text-slate-200 overflow-y-auto font-sans select-none pb-12">
+    <div className="flex-1 flex flex-col bg-gradient-to-b from-[#1c0407] via-[#120204] to-[#080102] text-slate-100 overflow-y-auto font-sans select-none pb-12">
       {/* 1. Header Toolbar */}
-      <div className="px-5 py-3 border-b border-slate-800 bg-[#0e111a] flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-md">
+      <div className="px-5 py-3 border-b border-red-900/80 bg-gradient-to-r from-[#2e070c] via-[#1c0407] to-[#2e070c] flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-xl">
         {/* Left: Device Title & Status */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-950 via-[#181120] to-[#0d101a] border border-rose-700/50 flex items-center justify-center text-rose-400 shadow-inner">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-800 via-[#33070d] to-[#180305] border border-red-500/60 flex items-center justify-center text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.3)]">
             <Radio size={22} className="animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-black tracking-widest text-white uppercase font-mono">
-                BOSS RC-600 <span className="text-rose-400">LOOP STATION</span>
+                BOSS RC-600 <span className="text-red-500 font-black">LOOP STATION</span>
               </h1>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-red-950/80 text-red-300 border border-red-700/60">
                 6 STEREO TRACKS · 32-BIT FLOAT
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Floorboard Multi-Track Looper with Bi-Directional SP-404 Stem Exchange & DAW Clock Sync
+            <p className="text-[11px] text-red-200/70">
+              Flagship Boss Red Floorboard Multi-Track Looper with Bi-Directional SP-404 Stem Exchange & DAW Clock Sync
             </p>
           </div>
         </div>
@@ -291,12 +291,12 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
         {/* Center: Memory Preset Selector & DAW Clock Lock */}
         <div className="flex items-center gap-3">
           {/* Memory Preset Selector */}
-          <div className="flex items-center gap-1.5 bg-[#121622] px-3 py-1.5 rounded-lg border border-slate-700">
-            <span className="text-[10px] text-slate-400 font-mono font-bold uppercase">MEMORY:</span>
+          <div className="flex items-center gap-1.5 bg-[#1f0508] px-3 py-1.5 rounded-lg border border-red-900/80">
+            <span className="text-[10px] text-red-300/80 font-mono font-bold uppercase">MEMORY:</span>
             <select
               value={currentMemory}
               onChange={(e) => handleLoadSongPreset(parseInt(e.target.value, 10))}
-              className="bg-[#0b0d13] text-white text-xs font-mono font-bold px-2 py-0.5 rounded border border-slate-700 focus:outline-none focus:border-rose-400 cursor-pointer"
+              className="bg-[#120204] text-white text-xs font-mono font-bold px-2 py-0.5 rounded border border-red-800/80 focus:outline-none focus:border-red-500 cursor-pointer"
             >
               {SONG_PRESETS.map((p) => (
                 <option key={p.index} value={p.index}>
@@ -307,7 +307,7 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
             <button
               type="button"
               onClick={() => handleLoadSongPreset(currentMemory)}
-              className="px-2 py-0.5 rounded bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-300 text-[10px] font-bold transition"
+              className="px-2 py-0.5 rounded bg-red-900 hover:bg-red-800 border border-red-600 text-red-100 text-[10px] font-bold transition shadow"
               title="Load Song Stems into Looper"
             >
               LOAD
@@ -315,18 +315,33 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
           </div>
 
           {/* Ableton Live DAW Sync Badge */}
-          <div className="flex items-center gap-2 bg-[#121622] px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-mono">
+          <div className="flex items-center gap-2 bg-[#1f0508] px-3 py-1.5 rounded-lg border border-red-900/80 text-xs font-mono">
             <Clock size={13} className="text-cyan-400" />
-            <span className="text-slate-400">DAW TEMPO:</span>
+            <span className="text-red-300/80">DAW TEMPO:</span>
             <span className="text-cyan-300 font-bold">{(telemetry?.bpm ?? 120).toFixed(1)} BPM</span>
-            <span className="text-slate-500">|</span>
+            <span className="text-red-400/50">|</span>
             <span className="text-amber-400 font-bold">4/4</span>
           </div>
 
-          <button type="button" onClick={() => { const next = !trackLinkEnabled; setTrackLinkEnabled(next); rc600AudioEngine.setTrackLinkEnabled(next); }} className={`px-3 py-1.5 rounded-lg border text-[10px] font-mono font-black ${trackLinkEnabled ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_10px_rgba(245,158,11,0.25)]' : 'bg-[#121622] text-slate-400 border-slate-700'}`} title="Lock active and newly recorded tracks to Track 1 loop length and DAW tempo">MASTER TEMPO / TRACK LINK {trackLinkEnabled ? 'ON' : 'OFF'}</button>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !trackLinkEnabled;
+              setTrackLinkEnabled(next);
+              rc600AudioEngine.setTrackLinkEnabled(next);
+            }}
+            className={`px-3 py-1.5 rounded-lg border text-[10px] font-mono font-black transition ${
+              trackLinkEnabled
+                ? 'bg-amber-500/25 text-amber-300 border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                : 'bg-[#1f0508] text-red-300/70 border-red-900/80 hover:text-white hover:border-red-700'
+            }`}
+            title="Lock active and newly recorded tracks to Track 1 loop length and DAW tempo"
+          >
+            MASTER TEMPO / TRACK LINK {trackLinkEnabled ? 'ON' : 'OFF'}
+          </button>
 
           {/* Loop Quantize Selector */}
-          <div className="flex items-center gap-1 bg-[#121622] p-1 rounded-lg border border-slate-700 text-[11px] font-mono">
+          <div className="flex items-center gap-1 bg-[#1f0508] p-1 rounded-lg border border-red-900/80 text-[11px] font-mono">
             {QUANTIZE_OPTIONS.map((opt) => (
               <button
                 key={opt}
@@ -337,8 +352,8 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
                 }}
                 className={`px-2 py-0.5 rounded transition ${
                   quantize === opt
-                    ? 'bg-rose-500 text-white font-bold shadow'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-red-600 text-white font-bold shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+                    : 'text-red-300/70 hover:text-white'
                 }`}
               >
                 {opt}
@@ -354,8 +369,8 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
             onClick={handleAllStartStop}
             className={`px-4 py-2 rounded-xl text-xs font-mono font-black tracking-wider flex items-center gap-2 transition shadow-lg ${
               isAnyPlaying
-                ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black shadow-amber-500/20'
-                : 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-black shadow-emerald-500/20'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black shadow-amber-500/30'
+                : 'bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black shadow-emerald-500/30'
             }`}
           >
             {isAnyPlaying ? (
@@ -375,7 +390,7 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
           <button
             type="button"
             onClick={onSwitchToSP404}
-            className="px-3 py-2 rounded-xl border border-[#ff5500]/50 bg-gradient-to-r from-[#241710] to-[#120d09] text-[#ff8844] hover:text-white text-xs font-bold font-mono flex items-center gap-1.5 transition"
+            className="px-3 py-2 rounded-xl border border-[#ff5500]/60 bg-gradient-to-r from-[#28130a] to-[#160b06] text-[#ff8844] hover:text-white text-xs font-bold font-mono flex items-center gap-1.5 transition shadow"
             title="Switch to Roland SP-404 Linear Sampler"
           >
             <Disc size={14} className="text-[#ff5500]" />
@@ -386,15 +401,15 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
 
       {/* Sync Status Banner */}
       {syncFeedback && (
-        <div className="px-5 py-2 bg-gradient-to-r from-rose-950/80 via-[#181220] to-[#0e111a] border-b border-rose-600/40 text-rose-300 text-xs font-mono flex items-center justify-between">
+        <div className="px-5 py-2 bg-gradient-to-r from-red-950/90 via-[#260509] to-[#140204] border-b border-red-700/60 text-red-200 text-xs font-mono flex items-center justify-between shadow-md">
           <div className="flex items-center gap-2">
-            <Radio size={14} className="text-rose-400 animate-pulse" />
+            <Radio size={14} className="text-red-400 animate-pulse" />
             <span>{syncFeedback}</span>
           </div>
           <button
             type="button"
             onClick={() => setSyncFeedback(null)}
-            className="text-slate-400 hover:text-white text-[11px]"
+            className="text-red-300 hover:text-white text-[11px]"
           >
             DISMISS
           </button>
@@ -405,17 +420,17 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
       <div className="p-5 flex-1 flex flex-col gap-6 max-w-7xl mx-auto w-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse" />
             <h2 className="text-xs font-bold text-white uppercase tracking-widest font-mono">
               6-Track Stereo Channel Strips
             </h2>
-            <span className="text-[10px] text-slate-500 font-mono">
+            <span className="text-[10px] text-red-300/70 font-mono">
               (Independently Pan, Reverse, Speed-Shift & Layer Stems)
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-            <span className="px-2 py-0.5 rounded bg-[#121622] border border-slate-700">
+          <div className="flex items-center gap-2 text-xs font-mono text-red-200">
+            <span className="px-2 py-0.5 rounded bg-[#1c0508] border border-red-900/80">
               HOTKEYS: <strong className="text-white">1–6</strong> TRACK REC/PLAY · <strong className="text-white">SPACE</strong> ALL START/STOP · <strong className="text-white">U</strong> UNDO
             </span>
           </div>
@@ -442,16 +457,16 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
           ))}
         </div>
 
-        {/* 3. Boss RC-600 9-Footswitch Virtual Floorboard */}        {/* 3. Boss RC-600 9-Footswitch Virtual Floorboard */}
-        <div className="bg-gradient-to-b from-[#141824] via-[#0d101a] to-[#07090e] border border-slate-800 rounded-3xl p-6 shadow-2xl">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-800">
+        {/* 3. Boss RC-600 9-Footswitch Virtual Floorboard */}
+        <div className="bg-gradient-to-b from-[#3a0a10] via-[#220508] to-[#120204] border-2 border-red-700/80 rounded-3xl p-6 shadow-[0_0_50px_rgba(185,28,28,0.3)]">
+          <div className="flex items-center justify-between pb-4 mb-5 border-b border-red-900/80">
             <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse" />
               <h3 className="text-xs font-extrabold text-white tracking-widest uppercase font-mono">
                 ROLAND / BOSS RC-600 9-FOOTSWITCH PEDALBOARD
               </h3>
             </div>
-            <span className="text-[11px] text-slate-400 font-mono">
+            <span className="text-[11px] text-red-300/80 font-mono font-bold">
               Live Stomp Switches with Visual Multi-Color Halos
             </span>
           </div>
@@ -472,43 +487,45 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
                   onClick={() => handleFootswitchTrigger(num)}
                   className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
                     isStomped
-                      ? 'scale-95 bg-slate-700 border-white'
+                      ? 'scale-95 bg-red-800 border-white'
                       : isRec
-                      ? 'bg-rose-950/40 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.4)]'
+                      ? 'bg-gradient-to-b from-red-950/80 to-[#220407] border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.45)]'
                       : isDub
-                      ? 'bg-amber-950/40 border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
+                      ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
                       : isPlay
-                      ? 'bg-emerald-950/40 border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]'
-                      : 'bg-[#101420] border-slate-700/80 hover:border-slate-600 hover:bg-[#141a29]'
+                      ? 'bg-gradient-to-b from-emerald-950/80 to-[#220407] border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.45)]'
+                      : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500 hover:bg-[#32080d]'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-[11px] font-mono font-bold text-slate-400">FS {num}</span>
+                    <span className="text-[11px] font-mono font-bold text-red-300">FS {num}</span>
                     <span
                       className={`w-3.5 h-3.5 rounded-full border ${
                         isRec
-                          ? 'bg-rose-500 border-rose-300 shadow-[0_0_12px_#f43f5e] animate-pulse'
+                          ? 'bg-red-500 border-red-200 shadow-[0_0_12px_#ef4444] animate-pulse'
                           : isDub
-                          ? 'bg-amber-400 border-amber-200 shadow-[0_0_12px_#f59e0b]'
+                          ? 'bg-amber-400 border-amber-100 shadow-[0_0_12px_#f59e0b]'
                           : isPlay
-                          ? 'bg-emerald-400 border-emerald-200 shadow-[0_0_12px_#10b981]'
+                          ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
                           : trk?.audioBuffer
-                          ? 'bg-cyan-400 border-cyan-200'
-                          : 'bg-slate-700 border-slate-600'
+                          ? 'bg-red-400 border-red-200 shadow-[0_0_8px_#f87171]'
+                          : 'bg-[#3b0a0e] border-red-900'
                       }`}
                     />
                   </div>
 
-                  {/* Simulated Stomp Bezel */}
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#2b3345] to-[#12151e] border-2 border-slate-600 flex items-center justify-center my-2 shadow-inner group-hover:border-slate-400 transition">
-                    <span className="font-mono text-base font-black text-white">{num}</span>
+                  {/* Authentic Chrome/Steel Stomp Bezel */}
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                      <span className="font-mono text-base font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{num}</span>
+                    </div>
                   </div>
 
                   <div className="w-full">
-                    <span className="font-mono text-xs font-bold text-slate-200 block truncate">
+                    <span className="font-mono text-xs font-bold text-white block truncate">
                       {trk?.name || `Track ${num}`}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-400 block uppercase">
+                    <span className="text-[10px] font-mono text-red-300/70 block uppercase">
                       {trk?.status || 'EMPTY'} · KEY [{num}]
                     </span>
                   </div>
@@ -531,42 +548,45 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
                   onClick={() => handleFootswitchTrigger(num)}
                   className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
                     isStomped
-                      ? 'scale-95 bg-slate-700 border-white'
+                      ? 'scale-95 bg-red-800 border-white'
                       : isRec
-                      ? 'bg-rose-950/40 border-rose-500 shadow-[0_0_25px_rgba(244,63,94,0.4)]'
+                      ? 'bg-gradient-to-b from-red-950/80 to-[#220407] border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.45)]'
                       : isDub
-                      ? 'bg-amber-950/40 border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
+                      ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
                       : isPlay
-                      ? 'bg-emerald-950/40 border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.4)]'
-                      : 'bg-[#101420] border-slate-700/80 hover:border-slate-600 hover:bg-[#141a29]'
+                      ? 'bg-gradient-to-b from-emerald-950/80 to-[#220407] border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.45)]'
+                      : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500 hover:bg-[#32080d]'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-[11px] font-mono font-bold text-slate-400">FS {num}</span>
+                    <span className="text-[11px] font-mono font-bold text-red-300">FS {num}</span>
                     <span
                       className={`w-3.5 h-3.5 rounded-full border ${
                         isRec
-                          ? 'bg-rose-500 border-rose-300 shadow-[0_0_12px_#f43f5e] animate-pulse'
+                          ? 'bg-red-500 border-red-200 shadow-[0_0_12px_#ef4444] animate-pulse'
                           : isDub
-                          ? 'bg-amber-400 border-amber-200 shadow-[0_0_12px_#f59e0b]'
+                          ? 'bg-amber-400 border-amber-100 shadow-[0_0_12px_#f59e0b]'
                           : isPlay
-                          ? 'bg-emerald-400 border-emerald-200 shadow-[0_0_12px_#10b981]'
+                          ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
                           : trk?.audioBuffer
-                          ? 'bg-cyan-400 border-cyan-200'
-                          : 'bg-slate-700 border-slate-600'
+                          ? 'bg-red-400 border-red-200 shadow-[0_0_8px_#f87171]'
+                          : 'bg-[#3b0a0e] border-red-900'
                       }`}
                     />
                   </div>
 
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#2b3345] to-[#12151e] border-2 border-slate-600 flex items-center justify-center my-2 shadow-inner group-hover:border-slate-400 transition">
-                    <span className="font-mono text-base font-black text-white">{num}</span>
+                  {/* Authentic Chrome/Steel Stomp Bezel */}
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                      <span className="font-mono text-base font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{num}</span>
+                    </div>
                   </div>
 
                   <div className="w-full">
-                    <span className="font-mono text-xs font-bold text-slate-200 block truncate">
+                    <span className="font-mono text-xs font-bold text-white block truncate">
                       {trk?.name || `Track ${num}`}
                     </span>
-                    <span className="text-[10px] font-mono text-slate-400 block uppercase">
+                    <span className="text-[10px] font-mono text-red-300/70 block uppercase">
                       {trk?.status || 'EMPTY'} · KEY [{num}]
                     </span>
                   </div>
@@ -581,30 +601,33 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               onClick={handleAllStartStop}
               className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
                 activeFootswitchStomp === 7
-                  ? 'scale-95 bg-slate-700 border-white'
+                  ? 'scale-95 bg-red-800 border-white'
                   : isAnyPlaying
-                  ? 'bg-amber-950/40 border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
-                  : 'bg-[#101420] border-slate-700 hover:border-slate-600'
+                  ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.35)]'
+                  : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
               }`}
             >
               <div className="flex items-center justify-between w-full">
-                <span className="text-[11px] font-mono font-bold text-slate-400">FS 7</span>
+                <span className="text-[11px] font-mono font-bold text-red-300">FS 7</span>
                 <span
                   className={`w-3.5 h-3.5 rounded-full border ${
                     isAnyPlaying
-                      ? 'bg-emerald-400 border-emerald-200 shadow-[0_0_12px_#10b981]'
-                      : 'bg-slate-700 border-slate-600'
+                      ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
+                      : 'bg-[#3b0a0e] border-red-900'
                   }`}
                 />
               </div>
 
-              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#2b3345] to-[#12151e] border-2 border-slate-600 flex items-center justify-center my-2 shadow-inner group-hover:border-slate-400 transition">
-                {isAnyPlaying ? <Square size={20} className="text-amber-400 fill-amber-400" /> : <Play size={20} className="text-emerald-400 fill-emerald-400" />}
+              {/* Authentic Chrome/Steel Stomp Bezel */}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                  {isAnyPlaying ? <Square size={18} className="text-amber-400 fill-amber-400" /> : <Play size={18} className="text-emerald-400 fill-emerald-400 ml-0.5" />}
+                </div>
               </div>
 
               <div className="w-full">
                 <span className="font-mono text-xs font-bold text-white block">ALL START / STOP</span>
-                <span className="text-[10px] font-mono text-slate-400 block">KEY [SPACE]</span>
+                <span className="text-[10px] font-mono text-red-300/70 block">KEY [SPACE]</span>
               </div>
             </button>
 
@@ -614,22 +637,25 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               onClick={handleUndoActive}
               className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
                 activeFootswitchStomp === 8
-                  ? 'scale-95 bg-slate-700 border-white'
-                  : 'bg-[#101420] border-slate-700 hover:border-slate-600'
+                  ? 'scale-95 bg-red-800 border-white'
+                  : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
               }`}
             >
               <div className="flex items-center justify-between w-full">
-                <span className="text-[11px] font-mono font-bold text-slate-400">FS 8</span>
-                <span className="w-3.5 h-3.5 rounded-full border bg-slate-700 border-slate-600" />
+                <span className="text-[11px] font-mono font-bold text-red-300">FS 8</span>
+                <span className="w-3.5 h-3.5 rounded-full border bg-[#3b0a0e] border-red-900" />
               </div>
 
-              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#2b3345] to-[#12151e] border-2 border-slate-600 flex items-center justify-center my-2 shadow-inner group-hover:border-slate-400 transition">
-                <RotateCcw size={20} className="text-cyan-400" />
+              {/* Authentic Chrome/Steel Stomp Bezel */}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                  <RotateCcw size={18} className="text-cyan-400" />
+                </div>
               </div>
 
               <div className="w-full">
                 <span className="font-mono text-xs font-bold text-white block">UNDO ACTIVE TRACK</span>
-                <span className="text-[10px] font-mono text-slate-400 block">KEY [U]</span>
+                <span className="text-[10px] font-mono text-red-300/70 block">KEY [U]</span>
               </div>
             </button>
 
@@ -639,31 +665,34 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               onClick={() => triggerStompVisual(9)}
               className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
                 activeFootswitchStomp === 9
-                  ? 'scale-95 bg-slate-700 border-white'
-                  : 'bg-[#101420] border-slate-700 hover:border-slate-600'
+                  ? 'scale-95 bg-red-800 border-white'
+                  : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
               }`}
             >
               <div className="flex items-center justify-between w-full">
-                <span className="text-[11px] font-mono font-bold text-slate-400">FS 9</span>
-                <span className="w-3.5 h-3.5 rounded-full border bg-rose-500 border-rose-300 animate-pulse" />
+                <span className="text-[11px] font-mono font-bold text-red-300">FS 9</span>
+                <span className="w-3.5 h-3.5 rounded-full border bg-red-500 border-red-300 animate-pulse shadow-[0_0_8px_#ef4444]" />
               </div>
 
-              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#2b3345] to-[#12151e] border-2 border-slate-600 flex items-center justify-center my-2 shadow-inner group-hover:border-slate-400 transition">
-                <Radio size={20} className="text-rose-400" />
+              {/* Authentic Chrome/Steel Stomp Bezel */}
+              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                  <Radio size={18} className="text-red-400 animate-pulse" />
+                </div>
               </div>
 
               <div className="w-full">
                 <span className="font-mono text-xs font-bold text-white block">TAP TEMPO</span>
-                <span className="text-[10px] font-mono text-slate-400 block">{(telemetry?.bpm ?? 120).toFixed(1)} BPM · KEY [T]</span>
+                <span className="text-[10px] font-mono text-red-300/70 block">{(telemetry?.bpm ?? 120).toFixed(1)} BPM · KEY [T]</span>
               </div>
             </button>
           </div>
         </div>
 
         {/* 4. Hardware Storage Sync (Boss RC-600 USB & SP-404 SD Card) */}
-        <div className="bg-[#0e111a] border border-slate-800 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-[#28070b] via-[#1a0407] to-[#28070b] border border-red-900/80 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 shadow-xl">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-300">
+            <div className="w-12 h-12 rounded-xl bg-[#1d0508] border border-red-800/80 flex items-center justify-center text-red-300 shadow-inner">
               <HardDrive size={24} />
             </div>
             <div>
@@ -675,7 +704,7 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
                     hardwareStatus?.rc600?.mounted
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      : 'bg-[#180406] text-red-300/70 border border-red-900/80'
                   }`}
                 >
                   {hardwareStatus?.rc600?.mounted ? 'RC-600 MOUNTED' : 'RC-600 STANDBY / LOCAL'}
@@ -684,13 +713,13 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
                   className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
                     hardwareStatus?.sp404?.mounted
                       ? 'bg-[#ff5500]/20 text-[#ff8844] border border-[#ff5500]/40'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      : 'bg-[#180406] text-red-300/70 border border-red-900/80'
                   }`}
                 >
                   {hardwareStatus?.sp404?.mounted ? 'SP-404 SD MOUNTED' : 'SP-404 STANDBY / LOCAL'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-red-200/70 mt-1">
                 Writes genuine 32-bit float stereo WAVs into Boss RC-600 memories & 512-byte aligned RIFF WAVs into SP-404 SD cards.
               </p>
             </div>
@@ -701,7 +730,7 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               type="button"
               disabled={isSyncingHardware}
               onClick={handleSyncAllHardware}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-mono text-xs font-bold flex items-center gap-2 shadow-lg disabled:opacity-50 transition"
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-mono text-xs font-bold flex items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.4)] disabled:opacity-50 transition"
             >
               <RefreshCw size={14} className={isSyncingHardware ? 'animate-spin' : ''} />
               <span>SYNC ALL HARDWARE</span>

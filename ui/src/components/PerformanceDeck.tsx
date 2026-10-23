@@ -390,12 +390,12 @@ export const PerformanceDeck: React.FC<PerformanceDeckProps> = React.memo(({
         </div>
 
         {/* Roland/Boss RC-600 Compact Looper Bar */}
-        <div className="bg-[#0e111a] border border-slate-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md max-w-4xl mx-auto w-full">
+        <div className="bg-gradient-to-r from-[#2a060a] via-[#1a0406] to-[#2a060a] border border-red-900/80 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-[0_0_20px_rgba(185,28,28,0.25)] max-w-4xl mx-auto w-full">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_6px_#f43f5e]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse" />
             <span className="font-mono text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <Radio size={13} className="text-rose-400" />
-              <span>RC-600 LOOPER</span>
+              <Radio size={13} className="text-red-400" />
+              <span>BOSS RC-600 LOOPER</span>
             </span>
           </div>
 
@@ -415,14 +415,14 @@ export const PerformanceDeck: React.FC<PerformanceDeckProps> = React.memo(({
                   }}
                   className={`flex-1 py-1 px-1.5 rounded-lg border text-left font-mono transition-all duration-75 flex items-center justify-between gap-1 select-none active:scale-95 ${
                     isRec
-                      ? 'bg-rose-500/25 border-rose-500 text-rose-300 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
+                      ? 'bg-red-600/35 border-red-500 text-red-200 shadow-[0_0_10px_rgba(239,68,68,0.5)]'
                       : isDub
                       ? 'bg-amber-500/25 border-amber-500 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.4)]'
                       : isPlay
                       ? 'bg-emerald-500/25 border-emerald-500 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
                       : trk.audioBuffer
-                      ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25'
-                      : 'bg-[#121520] border-slate-800 text-slate-500 hover:text-slate-300'
+                      ? 'bg-red-950/70 border-red-700/60 text-red-200 hover:bg-red-900/50'
+                      : 'bg-[#140305] border-red-950/70 text-red-400/50 hover:text-red-300 hover:border-red-800/60'
                   }`}
                   title={`T${trk.id}: ${trk.name} (${trk.status.toUpperCase()}) - Click to Trigger`}
                 >
@@ -435,14 +435,14 @@ export const PerformanceDeck: React.FC<PerformanceDeckProps> = React.memo(({
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 ${
                       isRec
-                        ? 'bg-rose-500 animate-pulse shadow-[0_0_4px_#f43f5e]'
+                        ? 'bg-red-500 animate-pulse shadow-[0_0_6px_#ef4444]'
                         : isDub
                         ? 'bg-amber-400 animate-pulse'
                         : isPlay
-                        ? 'bg-emerald-400'
+                        ? 'bg-emerald-400 shadow-[0_0_6px_#10b981]'
                         : trk.audioBuffer
-                        ? 'bg-cyan-400'
-                        : 'bg-slate-700'
+                        ? 'bg-red-400'
+                        : 'bg-red-950/80'
                     }`}
                   />
                 </button>
@@ -460,7 +460,7 @@ export const PerformanceDeck: React.FC<PerformanceDeckProps> = React.memo(({
                 else rc600AudioEngine.allStart();
                 setRc600Tracks(rc600AudioEngine.getTracks());
               }}
-              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] font-bold transition flex items-center gap-1 border border-slate-700"
+              className="px-2.5 py-1 rounded-lg bg-[#200508] hover:bg-[#32080d] text-red-200 font-mono text-[10px] font-bold transition flex items-center gap-1 border border-red-900/70 shadow-sm"
             >
               {rc600Tracks.some((t) => t.status === 'playing' || t.status === 'overdubbing') ? (
                 <>
@@ -479,7 +479,7 @@ export const PerformanceDeck: React.FC<PerformanceDeckProps> = React.memo(({
               <button
                 type="button"
                 onClick={onOpenRC600}
-                className="text-[11px] font-bold text-rose-400 hover:text-rose-300 hover:underline flex items-center gap-1 font-mono"
+                className="text-[11px] font-bold text-red-400 hover:text-red-300 hover:underline flex items-center gap-1 font-mono drop-shadow-[0_0_6px_rgba(248,113,113,0.3)]"
               >
                 <span>Full RC-600 ➔</span>
               </button>

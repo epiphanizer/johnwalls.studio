@@ -743,46 +743,46 @@ const SP404WorkstationComponent: React.FC<SP404WorkstationProps> = ({
             <button
               type="button"
               onClick={() => setIsRc600ExchangeOpen(!isRc600ExchangeOpen)}
-              className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-700/60 text-rose-300 hover:text-white text-[11px] font-bold transition flex items-center gap-1.5 shadow-sm"
+              className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900/80 border border-red-700/80 text-red-200 hover:text-white text-[11px] font-bold transition flex items-center gap-1.5 shadow-sm"
               title="Exchange stems and loops with Boss RC-600 Loop Station"
             >
-              <Radio size={12} className="text-rose-400" />
+              <Radio size={12} className="text-red-400" />
               <span>RC-600 BRIDGE</span>
             </button>
 
             {isRc600ExchangeOpen && (
-              <div className="absolute top-9 left-0 w-72 bg-[#10131d] border border-rose-600/50 rounded-xl shadow-2xl p-3 z-50 font-mono text-xs">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-700">
+              <div className="absolute top-9 left-0 w-72 bg-gradient-to-b from-[#24060a] to-[#120204] border-2 border-red-700/90 rounded-xl shadow-[0_10px_35px_rgba(185,28,28,0.35)] p-3.5 z-50 font-mono text-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-red-900/80">
                   <span className="font-bold text-white flex items-center gap-1.5">
-                    <Radio size={13} className="text-rose-400" />
+                    <Radio size={13} className="text-red-400 animate-pulse" />
                     <span>BOSS RC-600 BRIDGE</span>
                   </span>
                   <button
                     type="button"
                     onClick={() => setIsRc600ExchangeOpen(false)}
-                    className="text-slate-400 hover:text-white text-xs"
+                    className="text-red-300 hover:text-white text-xs"
                   >
                     ✕
                   </button>
                 </div>
 
-                <div className="mt-2 text-[11px] text-slate-300">
+                <div className="mt-2 text-[11px] text-red-200">
                   Selected: <strong className="text-[#ff5500]">Pad {activeBank}{String(selectedPadId).padStart(2, '0')}</strong> ({selectedPad?.label || 'Empty'})
                 </div>
 
                 <div className="my-2.5 space-y-2">
                   <div>
-                    <label className="text-[10px] text-slate-400 block mb-1">TARGET RC-600 TRACK (1-6):</label>
+                    <label className="text-[10px] text-red-300/80 block mb-1">TARGET RC-600 TRACK (1-6):</label>
                     <div className="grid grid-cols-6 gap-1">
                       {[1, 2, 3, 4, 5, 6].map((trkNum) => (
                         <button
                           key={trkNum}
                           type="button"
                           onClick={() => setRc600TargetTrack(trkNum)}
-                          className={`py-1 rounded text-center font-bold text-xs transition ${
+                          className={`py-1 rounded text-center font-bold text-xs transition border ${
                             rc600TargetTrack === trkNum
-                              ? 'bg-rose-500 text-white shadow'
-                              : 'bg-slate-800 text-slate-400 hover:text-white'
+                              ? 'bg-red-600 text-white border-red-400 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+                              : 'bg-[#180406] text-red-300/70 border-red-950 hover:border-red-700 hover:text-white'
                           }`}
                         >
                           T{trkNum}
@@ -806,7 +806,7 @@ const SP404WorkstationComponent: React.FC<SP404WorkstationProps> = ({
                           setTimeout(() => setRc600ExchangeMsg(null), 3000);
                         }
                       }}
-                      className="py-1.5 px-2 rounded bg-rose-600 hover:bg-rose-500 disabled:opacity-30 disabled:pointer-events-none text-white font-bold text-[10px] text-center transition"
+                      className="py-1.5 px-2 rounded bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 border border-red-500/80 disabled:opacity-30 disabled:pointer-events-none text-white font-bold text-[10px] text-center transition shadow"
                       title="Send this pad's audio into RC-600 track"
                     >
                       SEND ➔ T{rc600TargetTrack}
@@ -834,7 +834,7 @@ const SP404WorkstationComponent: React.FC<SP404WorkstationProps> = ({
                 </div>
 
                 {rc600ExchangeMsg && (
-                  <div className="text-[10px] text-emerald-400 font-bold p-1 bg-emerald-950/40 rounded border border-emerald-700/50 mb-2">
+                  <div className="text-[10px] text-emerald-300 font-bold p-1 bg-emerald-950/60 rounded border border-emerald-700/60 mb-2">
                     {rc600ExchangeMsg}
                   </div>
                 )}
@@ -846,7 +846,7 @@ const SP404WorkstationComponent: React.FC<SP404WorkstationProps> = ({
                       setIsRc600ExchangeOpen(false);
                       onSwitchToRC600();
                     }}
-                    className="w-full py-1 rounded bg-slate-800 hover:bg-slate-700 text-rose-300 font-bold text-[10px] text-center transition flex items-center justify-center gap-1 border border-slate-700"
+                    className="w-full py-1.5 rounded bg-[#1c0407] hover:bg-[#2c080d] text-red-200 font-bold text-[10px] text-center transition flex items-center justify-center gap-1 border border-red-800/80 shadow"
                   >
                     <span>Open Full RC-600 Looper ➔</span>
                   </button>
