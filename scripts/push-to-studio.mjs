@@ -114,7 +114,7 @@ async function main() {
     if (existsSync(TMP_BUNDLE)) {
       unlinkSync(TMP_BUNDLE);
     }
-    execSync(`tar -czf "${TMP_BUNDLE}" -C "${DIST_DIR}" .`, { stdio: 'inherit' });
+    execSync(`tar -czf "${TMP_BUNDLE}" --exclude='./audio' -C "${DIST_DIR}" .`, { stdio: 'inherit' });
     const stats = statSync(TMP_BUNDLE);
     const sizeKb = (stats.size / 1024).toFixed(1);
     console.log(`✓ Packaged bundle: ${sizeKb} KB`);
