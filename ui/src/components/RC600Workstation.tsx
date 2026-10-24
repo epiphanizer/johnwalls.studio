@@ -49,6 +49,8 @@ const QUANTIZE_OPTIONS = ['1 Bar', '2 Bars', '4 Bars', 'Free Loop'];
 
 const BANKS: BankLetter[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 
+export type RC600PedalMode = 'mode1' | 'mode2' | 'mode3';
+
 export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
   onSwitchToPedalLab,
   onSwitchToSP404,
@@ -58,6 +60,19 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
   telemetry
 }) => {
   const [tracks, setTracks] = useState<RC600Track[]>(() => rc600AudioEngine.getTracks());
+  const [pedalMode, setPedalMode] = useState<RC600PedalMode>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('pedal_mode') || params.get('mode');
+      if (mode === 'mode1' || mode === 'mode2' || mode === 'mode3') {
+        return mode as RC600PedalMode;
+      }
+    } catch {}
+    return 'mode1';
+  });
+  const [focusedTrackId, setFocusedTrackId] = useState<number>(1);
+  const [inputFxState, setInputFxState] = useState({ a: false, b: false, c: false });
+  const [trackFxState, setTrackFxState] = useState({ a: false, b: false, c: false });
   const [currentMemory, setCurrentMemory] = useState<number>(1);
   const [quantize, setQuantize] = useState<string>('4 Bars');
   const [masterVolume, setMasterVolume] = useState<number>(1.0);
@@ -115,35 +130,6 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
     };
   }, []);
 
-  // Keyboard shortcut listener for live footpedal stomps
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing into an input
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-
-      const key = e.key.toLowerCase();
-      if (key >= '1' && key <= '6') {
-        e.preventDefault();
-        const trkId = parseInt(key, 10);
-        handleFootswitchTrigger(trkId);
-      } else if (e.code === 'Space') {
-        e.preventDefault();
-        handleAllStartStop();
-      } else if (key === 'u') {
-        e.preventDefault();
-        // Undo active track
-        handleUndoActive();
-      } else if (key === 't') {
-        e.preventDefault();
-        // Tap tempo feedback
-        triggerStompVisual(9);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tracks]);
-
   const triggerStompVisual = (fsNumber: number) => {
     setActiveFootswitchStomp(fsNumber);
     setTimeout(() => {
@@ -151,16 +137,50 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
     }, 180);
   };
 
+  const cyclePedalMode = () => {
+    triggerStompVisual(7);
+    setPedalMode((curr) => {
+      const next = curr === 'mode1' ? 'mode2' : curr === 'mode2' ? 'mode3' : 'mode1';
+      const label =
+        next === 'mode1'
+          ? 'Mode 1: Tracks 1–3 (White LED)'
+          : next === 'mode2'
+          ? 'Mode 2: Tracks 4–6 (Red LED)'
+          : 'Mode 3: FX Control (Blue LED)';
+      setSyncFeedback(`Pedalboard switched to ${label}`);
+      setTimeout(() => setSyncFeedback(null), 3000);
+      return next;
+    });
+  };
+
   const handleFootswitchTrigger = (trackId: number) => {
-    triggerStompVisual(trackId);
+    const fsNum = trackId <= 3 ? trackId : trackId - 3;
+    triggerStompVisual(fsNum);
+    setFocusedTrackId(trackId);
     rc600AudioEngine.triggerFootswitch(trackId);
     refreshTracks();
+  };
+
+  const handleStopTrack = (trackId: number) => {
+    const fsNum = (trackId <= 3 ? trackId : trackId - 3) + 3;
+    triggerStompVisual(fsNum);
+    rc600AudioEngine.stopTrack(trackId);
+    refreshTracks();
+  };
+
+  const handleClearTrack = (trackId: number) => {
+    const fsNum = (trackId <= 3 ? trackId : trackId - 3) + 3;
+    triggerStompVisual(fsNum);
+    rc600AudioEngine.clearTrack(trackId);
+    refreshTracks();
+    setSyncFeedback(`Cleared Track ${trackId}`);
+    setTimeout(() => setSyncFeedback(null), 2500);
   };
 
   const isAnyPlaying = tracks.some((t) => t.status === 'playing' || t.status === 'overdubbing');
 
   const handleAllStartStop = () => {
-    triggerStompVisual(7);
+    triggerStompVisual(9);
     if (isAnyPlaying) {
       rc600AudioEngine.allStop();
     } else {
@@ -169,15 +189,82 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
     refreshTracks();
   };
 
-  const handleUndoActive = () => {
+  const handleUndoFocused = () => {
     triggerStompVisual(8);
-    // Find track that is recording/overdubbing/playing or last modified
-    const active = tracks.find((t) => t.status === 'overdubbing' || t.status === 'playing') || tracks[0];
-    if (active) {
-      rc600AudioEngine.undoTrack(active.id);
-      refreshTracks();
-    }
+    rc600AudioEngine.undoTrack(focusedTrackId);
+    refreshTracks();
+    setSyncFeedback(`Undo applied to Track ${focusedTrackId}`);
+    setTimeout(() => setSyncFeedback(null), 2500);
   };
+
+  const toggleInputFx = (key: 'a' | 'b' | 'c', fsNum: number) => {
+    triggerStompVisual(fsNum);
+    setInputFxState((prev) => {
+      const next = !prev[key];
+      const names = { a: 'Dub Delay', b: 'Space Reverb', c: 'Pitch Shift' };
+      setSyncFeedback(`Input FX ${key.toUpperCase()} (${names[key]}): ${next ? 'ENGAGED' : 'BYPASS'}`);
+      setTimeout(() => setSyncFeedback(null), 2500);
+      return { ...prev, [key]: next };
+    });
+  };
+
+  const toggleTrackFx = (key: 'a' | 'b' | 'c', fsNum: number) => {
+    triggerStompVisual(fsNum);
+    setTrackFxState((prev) => {
+      const next = !prev[key];
+      const names = { a: 'Resonant Filter', b: 'Beat Repeat', c: 'Vinyl Warp' };
+      setSyncFeedback(`Track FX ${key.toUpperCase()} (${names[key]}): ${next ? 'ENGAGED' : 'BYPASS'}`);
+      setTimeout(() => setSyncFeedback(null), 2500);
+      return { ...prev, [key]: next };
+    });
+  };
+
+  // Keyboard shortcut listener matching authentic Boss RC-600 hardware logic
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+
+      const key = e.key.toLowerCase();
+      if (key === '1' || key === '2' || key === '3') {
+        e.preventDefault();
+        const col = parseInt(key, 10) as 1 | 2 | 3;
+        if (pedalMode === 'mode1') handleFootswitchTrigger(col);
+        else if (pedalMode === 'mode2') handleFootswitchTrigger(col + 3);
+        else if (pedalMode === 'mode3') {
+          const fxKeys: ('a' | 'b' | 'c')[] = ['a', 'b', 'c'];
+          toggleInputFx(fxKeys[col - 1], col);
+        }
+      } else if (key === '4' || key === '5' || key === '6') {
+        e.preventDefault();
+        const col = (parseInt(key, 10) - 3) as 1 | 2 | 3;
+        if (pedalMode === 'mode1') handleStopTrack(col);
+        else if (pedalMode === 'mode2') handleStopTrack(col + 3);
+        else if (pedalMode === 'mode3') {
+          const fxKeys: ('a' | 'b' | 'c')[] = ['a', 'b', 'c'];
+          toggleTrackFx(fxKeys[col - 1], col + 3);
+        }
+      } else if (key === '7' || key === 'm') {
+        e.preventDefault();
+        cyclePedalMode();
+      } else if (key === '8' || key === 'u') {
+        e.preventDefault();
+        if (pedalMode === 'mode3') {
+          triggerStompVisual(8);
+        } else {
+          handleUndoFocused();
+        }
+      } else if (key === '9' || e.code === 'Space') {
+        e.preventDefault();
+        handleAllStartStop();
+      } else if (key === 't') {
+        e.preventDefault();
+        triggerStompVisual(8);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tracks, pedalMode, focusedTrackId]);
 
   const handleLoadSongPreset = async (presetIndex: number) => {
     setCurrentMemory(presetIndex);
@@ -430,8 +517,8 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono text-red-200">
-            <span className="px-2 py-0.5 rounded bg-[#1c0508] border border-red-900/80">
-              HOTKEYS: <strong className="text-white">1–6</strong> TRACK REC/PLAY · <strong className="text-white">SPACE</strong> ALL START/STOP · <strong className="text-white">U</strong> UNDO
+            <span className="px-2.5 py-1 rounded-lg bg-[#1c0508] border border-red-900/80 shadow-sm">
+              HOTKEYS: <strong className="text-white">[1–3]</strong> REC/PLAY · <strong className="text-white">[4–6]</strong> STOP · <strong className="text-white">[7/M]</strong> BANK SELECT · <strong className="text-white">[8/U]</strong> UNDO · <strong className="text-white">[SPACE]</strong> ALL START/STOP
             </span>
           </div>
         </div>
@@ -453,239 +540,542 @@ export const RC600Workstation: React.FC<RC600WorkstationProps> = ({
               bounceTargetPadId={bounceTargetPadId}
               setBounceTargetPadId={setBounceTargetPadId}
               banks={BANKS}
+              isPedalboardActive={
+                (pedalMode === 'mode1' && track.id <= 3) ||
+                (pedalMode === 'mode2' && track.id >= 4 && track.id <= 6)
+              }
+              pedalRecNum={track.id <= 3 ? track.id : track.id - 3}
+              pedalStopNum={track.id <= 3 ? track.id + 3 : track.id}
+              isFocused={focusedTrackId === track.id}
+              onSelectFocus={(id) => setFocusedTrackId(id)}
             />
           ))}
         </div>
 
         {/* 3. Boss RC-600 9-Footswitch Virtual Floorboard */}
         <div className="bg-gradient-to-b from-[#3a0a10] via-[#220508] to-[#120204] border-2 border-red-700/80 rounded-3xl p-6 shadow-[0_0_50px_rgba(185,28,28,0.3)]">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-red-900/80">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse" />
-              <h3 className="text-xs font-extrabold text-white tracking-widest uppercase font-mono">
-                ROLAND / BOSS RC-600 9-FOOTSWITCH PEDALBOARD
-              </h3>
+          <div className="flex flex-wrap items-center justify-between pb-4 mb-5 border-b border-red-900/80 gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_#ef4444] animate-pulse" />
+              <div>
+                <h3 className="text-sm font-extrabold text-white tracking-widest uppercase font-mono flex items-center gap-2">
+                  <span>ROLAND / BOSS RC-600 9-FOOTSWITCH PEDALBOARD</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-red-950/80 border border-red-800 text-red-300 font-normal">
+                    3 ROWS × 3 COLUMNS · DUAL-LAYER TRACK ARCHITECTURE
+                  </span>
+                </h3>
+                <p className="text-[11px] text-red-300/80 font-mono mt-0.5">
+                  Matches Factory RC-600 Hardware: Dedicated REC/PLAY (Row 3) & STOP (Row 2) per Track + Mode/Bank Cycling (Row 1)
+                </p>
+              </div>
             </div>
-            <span className="text-[11px] text-red-300/80 font-mono font-bold">
-              Live Stomp Switches with Visual Multi-Color Halos
-            </span>
+
+            {/* Mode Indicator & Direct Selector Pills */}
+            <div className="flex items-center gap-2 bg-[#170305] p-1.5 rounded-xl border border-red-900/80 shadow-inner">
+              <span className="text-[10px] font-mono font-bold text-red-300/80 px-1 uppercase">PEDAL MODE:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPedalMode('mode1');
+                  triggerStompVisual(7);
+                }}
+                className={`px-3 py-1 rounded-lg font-mono text-[10px] font-black transition flex items-center gap-1.5 ${
+                  pedalMode === 'mode1'
+                    ? 'bg-white text-black shadow-[0_0_14px_rgba(255,255,255,0.7)]'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                }`}
+                title="Mode 1: Footswitches control Tracks 1–3"
+              >
+                <span className={`w-2 h-2 rounded-full ${pedalMode === 'mode1' ? 'bg-black' : 'bg-white'}`} />
+                <span>MODE 1 (TRK 1–3)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPedalMode('mode2');
+                  triggerStompVisual(7);
+                }}
+                className={`px-3 py-1 rounded-lg font-mono text-[10px] font-black transition flex items-center gap-1.5 ${
+                  pedalMode === 'mode2'
+                    ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.7)]'
+                    : 'text-red-400/70 hover:text-red-200 hover:bg-red-950/40'
+                }`}
+                title="Mode 2: Footswitches control Tracks 4–6"
+              >
+                <span className="w-2 h-2 rounded-full bg-red-400" />
+                <span>MODE 2 (TRK 4–6)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPedalMode('mode3');
+                  triggerStompVisual(7);
+                }}
+                className={`px-3 py-1 rounded-lg font-mono text-[10px] font-black transition flex items-center gap-1.5 ${
+                  pedalMode === 'mode3'
+                    ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.7)]'
+                    : 'text-cyan-400/70 hover:text-cyan-200 hover:bg-cyan-950/40'
+                }`}
+                title="Mode 3: Footswitches control Input & Track FX"
+              >
+                <span className={`w-2 h-2 rounded-full ${pedalMode === 'mode3' ? 'bg-black' : 'bg-cyan-400'}`} />
+                <span>MODE 3 (FX)</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Row 1: Footswitches 1, 2, 3 (Tracks 1, 2, 3) */}
-            {[1, 2, 3].map((num) => {
-              const trk = tracks.find((t) => t.id === num);
-              const isStomped = activeFootswitchStomp === num;
-              const isRec = trk?.status === 'recording';
-              const isDub = trk?.status === 'overdubbing';
-              const isPlay = trk?.status === 'playing';
-
-              return (
+          <div className="space-y-4">
+            {/* ============================================================== */}
+            {/* ROW 1: TOP ROW (NAVIGATIONAL & GLOBAL MASTER CONTROLS)         */}
+            {/* ============================================================== */}
+            <div>
+              <div className="text-[10px] font-mono font-bold text-red-300/70 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                <span>TOP ROW · NAVIGATIONAL & GLOBAL CONTROLS</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* FS 7: TRACK SELECT / PEDAL MODE */}
                 <button
-                  key={num}
                   type="button"
-                  onClick={() => handleFootswitchTrigger(num)}
-                  className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
-                    isStomped
+                  onClick={cyclePedalMode}
+                  className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                    activeFootswitchStomp === 7
                       ? 'scale-95 bg-red-800 border-white'
-                      : isRec
-                      ? 'bg-gradient-to-b from-red-950/80 to-[#220407] border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.45)]'
-                      : isDub
-                      ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
-                      : isPlay
-                      ? 'bg-gradient-to-b from-emerald-950/80 to-[#220407] border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.45)]'
-                      : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500 hover:bg-[#32080d]'
+                      : pedalMode === 'mode1'
+                      ? 'bg-gradient-to-b from-[#2a080d] to-[#140306] border-white/80 shadow-[0_0_20px_rgba(255,255,255,0.25)]'
+                      : pedalMode === 'mode2'
+                      ? 'bg-gradient-to-b from-red-950/90 to-[#220407] border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.4)]'
+                      : 'bg-gradient-to-b from-cyan-950/80 to-[#120306] border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.4)]'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-[11px] font-mono font-bold text-red-300">FS {num}</span>
+                    <span className="text-[11px] font-mono font-black text-red-200">FS 7 · TRACK SELECT</span>
                     <span
                       className={`w-3.5 h-3.5 rounded-full border ${
-                        isRec
-                          ? 'bg-red-500 border-red-200 shadow-[0_0_12px_#ef4444] animate-pulse'
-                          : isDub
-                          ? 'bg-amber-400 border-amber-100 shadow-[0_0_12px_#f59e0b]'
-                          : isPlay
-                          ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
-                          : trk?.audioBuffer
-                          ? 'bg-red-400 border-red-200 shadow-[0_0_8px_#f87171]'
-                          : 'bg-[#3b0a0e] border-red-900'
+                        pedalMode === 'mode1'
+                          ? 'bg-white border-zinc-300 shadow-[0_0_12px_#ffffff]'
+                          : pedalMode === 'mode2'
+                          ? 'bg-red-500 border-red-200 shadow-[0_0_12px_#ef4444]'
+                          : 'bg-cyan-400 border-cyan-200 shadow-[0_0_12px_#22d3ee]'
                       }`}
                     />
                   </div>
 
-                  {/* Authentic Chrome/Steel Stomp Bezel */}
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
-                      <span className="font-mono text-base font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{num}</span>
+                  {/* Authentic Chrome/Steel Stomp Bezel with Mode-Colored Center */}
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                    <div
+                      className={`w-12 h-12 rounded-full border flex items-center justify-center shadow-inner ${
+                        pedalMode === 'mode1'
+                          ? 'bg-gradient-to-b from-zinc-200 to-zinc-400 border-white text-black'
+                          : pedalMode === 'mode2'
+                          ? 'bg-gradient-to-b from-red-700 to-red-900 border-red-400 text-white'
+                          : 'bg-gradient-to-b from-cyan-600 to-cyan-900 border-cyan-300 text-white'
+                      }`}
+                    >
+                      <Layers size={18} />
                     </div>
                   </div>
 
                   <div className="w-full">
-                    <span className="font-mono text-xs font-bold text-white block truncate">
-                      {trk?.name || `Track ${num}`}
+                    <span className="font-mono text-xs font-black text-white block">
+                      {pedalMode === 'mode1'
+                        ? 'MODE 1: TRK 1–3 (WHITE)'
+                        : pedalMode === 'mode2'
+                        ? 'MODE 2: TRK 4–6 (RED)'
+                        : 'MODE 3: FX CONTROL (BLUE)'}
                     </span>
-                    <span className="text-[10px] font-mono text-red-300/70 block uppercase">
-                      {trk?.status || 'EMPTY'} · KEY [{num}]
+                    <span className="text-[10px] font-mono text-red-300/80 block mt-0.5">
+                      KEY [7 / M] · TAP TO CYCLE BANK
                     </span>
                   </div>
                 </button>
-              );
-            })}
 
-            {/* Row 2: Footswitches 4, 5, 6 (Tracks 4, 5, 6) */}
-            {[4, 5, 6].map((num) => {
-              const trk = tracks.find((t) => t.id === num);
-              const isStomped = activeFootswitchStomp === num;
-              const isRec = trk?.status === 'recording';
-              const isDub = trk?.status === 'overdubbing';
-              const isPlay = trk?.status === 'playing';
+                {/* FS 8: UNDO / REDO (Modes 1 & 2) OR TAP TEMPO (Mode 3) */}
+                {pedalMode === 'mode3' ? (
+                  <button
+                    type="button"
+                    onClick={() => triggerStompVisual(8)}
+                    className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                      activeFootswitchStomp === 8
+                        ? 'scale-95 bg-red-800 border-white'
+                        : 'bg-gradient-to-b from-[#240609] to-[#130204] border-cyan-500/80 shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:border-cyan-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[11px] font-mono font-black text-cyan-300">FS 8 · TAP TEMPO</span>
+                      <span className="w-3.5 h-3.5 rounded-full border bg-cyan-400 border-cyan-200 shadow-[0_0_12px_#22d3ee] animate-pulse" />
+                    </div>
 
-              return (
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-b from-cyan-800 to-cyan-950 border border-cyan-400 flex items-center justify-center shadow-inner">
+                        <Radio size={18} className="text-cyan-300 animate-pulse" />
+                      </div>
+                    </div>
+
+                    <div className="w-full">
+                      <span className="font-mono text-xs font-black text-white block">TAP TEMPO / SYNC</span>
+                      <span className="text-[10px] font-mono text-cyan-300/80 block mt-0.5">
+                        {(telemetry?.bpm ?? 120).toFixed(1)} BPM · KEY [T]
+                      </span>
+                    </div>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleUndoFocused}
+                    className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                      activeFootswitchStomp === 8
+                        ? 'scale-95 bg-red-800 border-white'
+                        : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500 shadow-md'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[11px] font-mono font-black text-red-300">FS 8 · CUR.TRK UNDO</span>
+                      <span
+                        className={`w-3.5 h-3.5 rounded-full border ${
+                          tracks[focusedTrackId - 1]?.undoBuffer
+                            ? 'bg-cyan-400 border-cyan-100 shadow-[0_0_10px_#22d3ee]'
+                            : 'bg-[#3b0a0e] border-red-900'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                        <RotateCcw size={18} className="text-cyan-400" />
+                      </div>
+                    </div>
+
+                    <div className="w-full">
+                      <span className="font-mono text-xs font-black text-white block">UNDO / REDO</span>
+                      <span className="text-[10px] font-mono text-cyan-300 block mt-0.5">
+                        TARGET: T{focusedTrackId} ({tracks[focusedTrackId - 1]?.name.replace(/^Track \d+:\s*/, '').slice(0, 10)}) · KEY [8/U]
+                      </span>
+                    </div>
+                  </button>
+                )}
+
+                {/* FS 9: ALL START / STOP */}
                 <button
-                  key={num}
                   type="button"
-                  onClick={() => handleFootswitchTrigger(num)}
-                  className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
-                    isStomped
+                  onClick={handleAllStartStop}
+                  className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                    activeFootswitchStomp === 9
                       ? 'scale-95 bg-red-800 border-white'
-                      : isRec
-                      ? 'bg-gradient-to-b from-red-950/80 to-[#220407] border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.45)]'
-                      : isDub
-                      ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.45)]'
-                      : isPlay
-                      ? 'bg-gradient-to-b from-emerald-950/80 to-[#220407] border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.45)]'
-                      : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500 hover:bg-[#32080d]'
+                      : isAnyPlaying
+                      ? 'bg-gradient-to-b from-amber-950/90 to-[#220407] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
+                      : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <span className="text-[11px] font-mono font-bold text-red-300">FS {num}</span>
+                    <span className="text-[11px] font-mono font-black text-red-300">FS 9 · ALL START / STOP</span>
                     <span
                       className={`w-3.5 h-3.5 rounded-full border ${
-                        isRec
-                          ? 'bg-red-500 border-red-200 shadow-[0_0_12px_#ef4444] animate-pulse'
-                          : isDub
+                        isAnyPlaying
                           ? 'bg-amber-400 border-amber-100 shadow-[0_0_12px_#f59e0b]'
-                          : isPlay
-                          ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
-                          : trk?.audioBuffer
-                          ? 'bg-red-400 border-red-200 shadow-[0_0_8px_#f87171]'
-                          : 'bg-[#3b0a0e] border-red-900'
+                          : 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
                       }`}
                     />
                   </div>
 
-                  {/* Authentic Chrome/Steel Stomp Bezel */}
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
-                      <span className="font-mono text-base font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">{num}</span>
+                      {isAnyPlaying ? (
+                        <Square size={18} className="text-amber-400 fill-amber-400" />
+                      ) : (
+                        <Play size={18} className="text-emerald-400 fill-emerald-400 ml-0.5" />
+                      )}
                     </div>
                   </div>
 
                   <div className="w-full">
-                    <span className="font-mono text-xs font-bold text-white block truncate">
-                      {trk?.name || `Track ${num}`}
+                    <span className="font-mono text-xs font-black text-white block">
+                      {isAnyPlaying ? 'ALL STOP' : 'ALL START'}
                     </span>
-                    <span className="text-[10px] font-mono text-red-300/70 block uppercase">
-                      {trk?.status || 'EMPTY'} · KEY [{num}]
+                    <span className="text-[10px] font-mono text-red-300/80 block mt-0.5">
+                      GLOBAL 6-TRACK TRANSPORT · KEY [SPACE]
                     </span>
                   </div>
                 </button>
-              );
-            })}
-
-            {/* Row 3: Footswitches 7 (All Start/Stop), 8 (Undo/Redo), 9 (Tap Tempo) */}
-            {/* FS 7: All Start / Stop */}
-            <button
-              type="button"
-              onClick={handleAllStartStop}
-              className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
-                activeFootswitchStomp === 7
-                  ? 'scale-95 bg-red-800 border-white'
-                  : isAnyPlaying
-                  ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.35)]'
-                  : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-[11px] font-mono font-bold text-red-300">FS 7</span>
-                <span
-                  className={`w-3.5 h-3.5 rounded-full border ${
-                    isAnyPlaying
-                      ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
-                      : 'bg-[#3b0a0e] border-red-900'
-                  }`}
-                />
               </div>
+            </div>
 
-              {/* Authentic Chrome/Steel Stomp Bezel */}
-              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
-                  {isAnyPlaying ? <Square size={18} className="text-amber-400 fill-amber-400" /> : <Play size={18} className="text-emerald-400 fill-emerald-400 ml-0.5" />}
-                </div>
+            {/* ============================================================== */}
+            {/* ROW 2: MIDDLE ROW (DEDICATED STOP / CLEAR SWITCHES)            */}
+            {/* ============================================================== */}
+            <div>
+              <div className="text-[10px] font-mono font-bold text-red-300/70 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <span>
+                  MIDDLE ROW ·{' '}
+                  {pedalMode === 'mode3'
+                    ? 'TRACK FX CONTROL (FS 4–6)'
+                    : `DEDICATED STOP / CLEAR SWITCHES (FS 4–6) · ${pedalMode === 'mode1' ? 'TRACKS 1–3' : 'TRACKS 4–6'}`}
+                </span>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[1, 2, 3].map((colIndex) => {
+                  const fsNum = colIndex + 3; // FS 4, FS 5, FS 6
+                  const trackId = pedalMode === 'mode1' ? colIndex : colIndex + 3;
+                  const trk = tracks.find((t) => t.id === trackId);
+                  const isStomped = activeFootswitchStomp === fsNum;
 
-              <div className="w-full">
-                <span className="font-mono text-xs font-bold text-white block">ALL START / STOP</span>
-                <span className="text-[10px] font-mono text-red-300/70 block">KEY [SPACE]</span>
-              </div>
-            </button>
+                  if (pedalMode === 'mode3') {
+                    const fxLabels = ['FILTER', 'BEAT REPEAT', 'CHOP/GATE'];
+                    const fxKeys: ('a' | 'b' | 'c')[] = ['a', 'b', 'c'];
+                    const fxKey = fxKeys[colIndex - 1];
+                    const isFxActive = trackFxState[fxKey];
 
-            {/* FS 8: Undo / Redo */}
-            <button
-              type="button"
-              onClick={handleUndoActive}
-              className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
-                activeFootswitchStomp === 8
-                  ? 'scale-95 bg-red-800 border-white'
-                  : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-[11px] font-mono font-bold text-red-300">FS 8</span>
-                <span className="w-3.5 h-3.5 rounded-full border bg-[#3b0a0e] border-red-900" />
-              </div>
+                    return (
+                      <button
+                        key={fsNum}
+                        type="button"
+                        onClick={() => toggleTrackFx(fxKey, fsNum)}
+                        className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                          isStomped
+                            ? 'scale-95 bg-cyan-800 border-white'
+                            : isFxActive
+                            ? 'bg-gradient-to-b from-cyan-950/80 to-[#220407] border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.4)]'
+                            : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-cyan-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-[11px] font-mono font-black text-cyan-300">
+                            FS {fsNum} · TRK FX {String.fromCharCode(64 + colIndex)}
+                          </span>
+                          <span
+                            className={`w-3.5 h-3.5 rounded-full border ${
+                              isFxActive
+                                ? 'bg-cyan-400 border-cyan-100 shadow-[0_0_12px_#22d3ee]'
+                                : 'bg-[#3b0a0e] border-red-900'
+                            }`}
+                          />
+                        </div>
 
-              {/* Authentic Chrome/Steel Stomp Bezel */}
-              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
-                  <RotateCcw size={18} className="text-cyan-400" />
-                </div>
-              </div>
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                            <span className="font-mono text-base font-black text-white">{fsNum}</span>
+                          </div>
+                        </div>
 
-              <div className="w-full">
-                <span className="font-mono text-xs font-bold text-white block">UNDO ACTIVE TRACK</span>
-                <span className="text-[10px] font-mono text-red-300/70 block">KEY [U]</span>
-              </div>
-            </button>
+                        <div className="w-full">
+                          <span className="font-mono text-xs font-black text-white block">
+                            {fxLabels[colIndex - 1]}
+                          </span>
+                          <span className="text-[10px] font-mono text-cyan-300/80 block mt-0.5 uppercase">
+                            {isFxActive ? 'ENGAGED' : 'BYPASS'} · KEY [{fsNum}]
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  }
 
-            {/* FS 9: Tap Tempo / Host Sync */}
-            <button
-              type="button"
-              onClick={() => triggerStompVisual(9)}
-              className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[140px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
-                activeFootswitchStomp === 9
-                  ? 'scale-95 bg-red-800 border-white'
-                  : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-[11px] font-mono font-bold text-red-300">FS 9</span>
-                <span className="w-3.5 h-3.5 rounded-full border bg-red-500 border-red-300 animate-pulse shadow-[0_0_8px_#ef4444]" />
-              </div>
+                  const isPlayingOrRec =
+                    trk?.status === 'playing' || trk?.status === 'recording' || trk?.status === 'overdubbing';
 
-              {/* Authentic Chrome/Steel Stomp Bezel */}
-              <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-2 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
-                  <Radio size={18} className="text-red-400 animate-pulse" />
-                </div>
-              </div>
+                  return (
+                    <button
+                      key={fsNum}
+                      type="button"
+                      onClick={() => handleStopTrack(trackId)}
+                      className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                        isStomped
+                          ? 'scale-95 bg-red-800 border-white'
+                          : isPlayingOrRec
+                          ? 'bg-gradient-to-b from-amber-950/80 to-[#220407] border-amber-500/90 shadow-[0_0_25px_rgba(245,158,11,0.35)]'
+                          : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[11px] font-mono font-black text-red-300">
+                          FS {fsNum} · T{trackId} STOP
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleClearTrack(trackId);
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold bg-red-950/90 hover:bg-red-800 text-red-300 border border-red-700 cursor-pointer"
+                            title="Clear this track's recorded phrase"
+                          >
+                            CLEAR
+                          </span>
+                          <span
+                            className={`w-3.5 h-3.5 rounded-full border ${
+                              isPlayingOrRec
+                                ? 'bg-amber-400 border-amber-100 shadow-[0_0_12px_#f59e0b]'
+                                : 'bg-[#3b0a0e] border-red-900'
+                            }`}
+                          />
+                        </div>
+                      </div>
 
-              <div className="w-full">
-                <span className="font-mono text-xs font-bold text-white block">TAP TEMPO</span>
-                <span className="text-[10px] font-mono text-red-300/70 block">{(telemetry?.bpm ?? 120).toFixed(1)} BPM · KEY [T]</span>
+                      {/* Stomp Bezel with Square Stop Indicator */}
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                          <Square size={16} className={isPlayingOrRec ? 'text-amber-400 fill-amber-400' : 'text-zinc-400'} />
+                        </div>
+                      </div>
+
+                      <div className="w-full">
+                        <span className="font-mono text-xs font-black text-white block truncate">
+                          {trk?.name || `Track ${trackId}`}
+                        </span>
+                        <span className="text-[10px] font-mono text-red-300/80 block mt-0.5 uppercase">
+                          {trk?.status || 'EMPTY'} · TAP: STOP · KEY [{fsNum}]
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            </button>
+            </div>
+
+            {/* ============================================================== */}
+            {/* ROW 3: BOTTOM ROW (DEDICATED REC / PLAY / DUB SWITCHES)        */}
+            {/* ============================================================== */}
+            <div>
+              <div className="text-[10px] font-mono font-bold text-red-300/70 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>
+                  BOTTOM ROW ·{' '}
+                  {pedalMode === 'mode3'
+                    ? 'INPUT FX CONTROL (FS 1–3)'
+                    : `DEDICATED REC / PLAY / OVERDUB SWITCHES (FS 1–3) · ${pedalMode === 'mode1' ? 'TRACKS 1–3' : 'TRACKS 4–6'}`}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[1, 2, 3].map((colIndex) => {
+                  const fsNum = colIndex; // FS 1, FS 2, FS 3
+                  const trackId = pedalMode === 'mode1' ? colIndex : colIndex + 3;
+                  const trk = tracks.find((t) => t.id === trackId);
+                  const isStomped = activeFootswitchStomp === fsNum;
+
+                  if (pedalMode === 'mode3') {
+                    const fxLabels = ['DUB DELAY', 'SPACE REVERB', 'PITCH SHIFT'];
+                    const fxKeys: ('a' | 'b' | 'c')[] = ['a', 'b', 'c'];
+                    const fxKey = fxKeys[colIndex - 1];
+                    const isFxActive = inputFxState[fxKey];
+
+                    return (
+                      <button
+                        key={fsNum}
+                        type="button"
+                        onClick={() => toggleInputFx(fxKey, fsNum)}
+                        className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                          isStomped
+                            ? 'scale-95 bg-cyan-800 border-white'
+                            : isFxActive
+                            ? 'bg-gradient-to-b from-cyan-950/80 to-[#220407] border-cyan-400 shadow-[0_0_25px_rgba(6,182,212,0.4)]'
+                            : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-cyan-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-[11px] font-mono font-black text-cyan-300">
+                            FS {fsNum} · INPUT FX {String.fromCharCode(64 + colIndex)}
+                          </span>
+                          <span
+                            className={`w-3.5 h-3.5 rounded-full border ${
+                              isFxActive
+                                ? 'bg-cyan-400 border-cyan-100 shadow-[0_0_12px_#22d3ee]'
+                                : 'bg-[#3b0a0e] border-red-900'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border border-zinc-400 flex items-center justify-center shadow-inner">
+                            <span className="font-mono text-base font-black text-white">{fsNum}</span>
+                          </div>
+                        </div>
+
+                        <div className="w-full">
+                          <span className="font-mono text-xs font-black text-white block">
+                            {fxLabels[colIndex - 1]}
+                          </span>
+                          <span className="text-[10px] font-mono text-cyan-300/80 block mt-0.5 uppercase">
+                            {isFxActive ? 'ENGAGED' : 'BYPASS'} · KEY [{fsNum}]
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  }
+
+                  const isRec = trk?.status === 'recording';
+                  const isDub = trk?.status === 'overdubbing';
+                  const isPlay = trk?.status === 'playing';
+
+                  return (
+                    <button
+                      key={fsNum}
+                      type="button"
+                      onClick={() => handleFootswitchTrigger(trackId)}
+                      className={`relative p-5 rounded-2xl border-2 flex flex-col items-center justify-between min-h-[145px] transition-all duration-75 text-center group cursor-pointer shadow-lg select-none ${
+                        isStomped
+                          ? 'scale-95 bg-red-800 border-white'
+                          : isRec
+                          ? 'bg-gradient-to-b from-red-950/90 to-[#220407] border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.5)]'
+                          : isDub
+                          ? 'bg-gradient-to-b from-amber-950/90 to-[#220407] border-amber-500 shadow-[0_0_25px_rgba(245,158,11,0.5)]'
+                          : isPlay
+                          ? 'bg-gradient-to-b from-emerald-950/90 to-[#220407] border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.5)]'
+                          : 'bg-gradient-to-b from-[#240609] to-[#130204] border-red-900/80 hover:border-red-500 hover:bg-[#32080d]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[11px] font-mono font-black text-red-200">
+                          FS {fsNum} · T{trackId} REC/PLAY
+                        </span>
+                        <span
+                          className={`w-3.5 h-3.5 rounded-full border ${
+                            isRec
+                              ? 'bg-red-500 border-red-200 shadow-[0_0_12px_#ef4444] animate-pulse'
+                              : isDub
+                              ? 'bg-amber-400 border-amber-100 shadow-[0_0_12px_#f59e0b]'
+                              : isPlay
+                              ? 'bg-emerald-400 border-emerald-100 shadow-[0_0_12px_#10b981]'
+                              : trk?.audioBuffer
+                              ? 'bg-red-400 border-red-200 shadow-[0_0_8px_#f87171]'
+                              : 'bg-[#3b0a0e] border-red-900'
+                          }`}
+                        />
+                      </div>
+
+                      {/* Stomp Bezel with Dynamic Color Halo */}
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-b from-[#d4d4d8] via-[#a1a1aa] to-[#52525b] border-2 border-zinc-200 flex items-center justify-center my-1.5 shadow-[0_4px_10px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.7)] group-hover:border-white transition transform group-hover:scale-105">
+                        <div
+                          className={`w-12 h-12 rounded-full border flex items-center justify-center shadow-inner ${
+                            isRec
+                              ? 'bg-red-600 border-red-300 text-white'
+                              : isDub
+                              ? 'bg-amber-500 border-amber-200 text-black'
+                              : isPlay
+                              ? 'bg-emerald-500 border-emerald-200 text-black'
+                              : 'bg-gradient-to-b from-[#71717a] via-[#3f3f46] to-[#18181b] border-zinc-400 text-white'
+                          }`}
+                        >
+                          <span className="font-mono text-base font-black drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                            {fsNum}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-full">
+                        <span className="font-mono text-xs font-black text-white block truncate">
+                          {trk?.name || `Track ${trackId}`}
+                        </span>
+                        <span className="text-[10px] font-mono text-red-300/80 block mt-0.5 uppercase">
+                          {trk?.status || 'EMPTY'} · TAP CYCLE · KEY [{fsNum}]
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 

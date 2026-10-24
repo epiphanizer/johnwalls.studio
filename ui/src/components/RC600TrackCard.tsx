@@ -15,6 +15,11 @@ export interface RC600TrackCardProps {
   bounceTargetPadId: number;
   setBounceTargetPadId: (pad: number) => void;
   banks: BankLetter[];
+  isPedalboardActive?: boolean;
+  pedalRecNum?: number;
+  pedalStopNum?: number;
+  isFocused?: boolean;
+  onSelectFocus?: (trackId: number) => void;
 }
 
 export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
@@ -29,7 +34,12 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
   setBounceTargetBank,
   bounceTargetPadId,
   setBounceTargetPadId,
-  banks
+  banks,
+  isPedalboardActive = false,
+  pedalRecNum,
+  pedalStopNum,
+  isFocused = false,
+  onSelectFocus
 }) => {
   const isRec = track.status === 'recording';
   const isDub = track.status === 'overdubbing';
@@ -41,15 +51,20 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
 
   return (
     <div
-      className={`rounded-2xl border-2 p-3.5 bg-gradient-to-b from-[#23060a] via-[#160305] to-[#0c0203] flex flex-col justify-between transition-all duration-150 relative shadow-xl ${
-        badge.ring
+      onClick={() => onSelectFocus?.(track.id)}
+      className={`rounded-2xl border-2 p-3 bg-gradient-to-b from-[#23060a] via-[#160305] to-[#0c0203] flex flex-col justify-between transition-all duration-150 relative shadow-xl cursor-pointer ${
+        isFocused
+          ? 'border-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/50'
+          : isPedalboardActive
+          ? 'border-red-600/90 shadow-[0_0_15px_rgba(239,68,68,0.25)]'
+          : badge.ring
       }`}
     >
       {/* Track Top Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-red-900/70">
+      <div className="flex items-center justify-between pb-1.5 border-b border-red-900/70">
         <div className="flex items-center gap-1.5">
           <span className="font-mono text-xs font-black text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.4)]">T{track.id}</span>
-          <span className="font-mono text-[10px] font-bold text-red-100 truncate max-w-[85px]" title={track.name}>
+          <span className="font-mono text-[10px] font-bold text-red-100 truncate max-w-[80px]" title={track.name}>
             {track.name.replace(/^Track \d+:\s*/, '')}
           </span>
         </div>
@@ -62,6 +77,25 @@ export const RC600TrackCard: React.FC<RC600TrackCardProps> = ({
           <span className={`w-1.5 h-1.5 rounded-full ${badge.dot} ${isRec || isDub ? 'animate-pulse' : ''}`} />
           {badge.label}
         </span>
+      </div>
+
+      {/* Pedalboard Active / Standby Indicator Pill */}
+      <div className="my-1 flex items-center justify-between gap-1">
+        {isPedalboardActive && pedalRecNum && pedalStopNum ? (
+          <span className="px-1.5 py-0.5 rounded text-[8.5px] font-mono font-black bg-red-600/30 text-red-200 border border-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.3)] flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span>PEDAL: FS{pedalRecNum} REC · FS{pedalStopNum} STOP</span>
+          </span>
+        ) : (
+          <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold text-red-400/50 border border-red-950/80 bg-[#120305]">
+            BANK {track.id <= 3 ? '1' : '2'} (STANDBY)
+          </span>
+        )}
+        {isFocused && (
+          <span className="px-1 py-0.2 rounded text-[7.5px] font-mono font-black bg-cyan-950 text-cyan-300 border border-cyan-500/70">
+            FOCUS [U]
+          </span>
+        )}
       </div>
 
       {/* Loop position ring and waveform */}

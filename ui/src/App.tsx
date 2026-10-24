@@ -161,8 +161,15 @@ export const App: React.FC = () => {
 
   const [activeWorkspace, setActiveWorkspace] = useState<StudioWorkspace>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const wsParam = params.get('workspace') as StudioWorkspace;
+        if (wsParam && ['pedal_lab', 'sp404', 'rc600', 'state', 'performance', 'unified'].includes(wsParam)) {
+          return wsParam;
+        }
+      }
       const saved = localStorage.getItem('johnwalls_active_workspace') as StudioWorkspace;
-      if (saved && ['pedal_lab', 'sp404', 'state', 'performance', 'unified'].includes(saved)) {
+      if (saved && ['pedal_lab', 'sp404', 'rc600', 'state', 'performance', 'unified'].includes(saved)) {
         return saved;
       }
     } catch {}
@@ -195,6 +202,12 @@ export const App: React.FC = () => {
   // Modal open on initial launch if workspace choice not yet configured
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState<boolean>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('modal') === 'false' || params.has('workspace')) {
+          return false;
+        }
+      }
       return localStorage.getItem('johnwalls_workspace_configured') !== 'true';
     } catch {
       return false;
