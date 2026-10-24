@@ -14,6 +14,12 @@ interface VirtualTerminalProps {
 
 const QUICK_COMMANDS = [
   'help',
+  'bounce list',
+  'bounce song 6',
+  'hardware status',
+  'hardware sync',
+  'card status',
+  'card export',
   'record',
   'takes',
   'publish',
@@ -30,7 +36,7 @@ const QUICK_COMMANDS = [
   'add pedal drive'
 ];
 
-export const VirtualTerminal: React.FC<VirtualTerminalProps> = ({
+export const VirtualTerminal: React.FC<VirtualTerminalProps> = React.memo(({
   logs,
   onExecuteCommand,
   isOpen,
@@ -226,4 +232,4 @@ export const VirtualTerminal: React.FC<VirtualTerminalProps> = ({
       </form>
     </div>
   );
-};
+});

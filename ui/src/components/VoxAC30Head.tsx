@@ -13,7 +13,7 @@ interface VoxAC30HeadProps {
   onSaveToLibrary?: (amp: PedalInstance) => void;
 }
 
-export const VoxAC30Head: React.FC<VoxAC30HeadProps> = ({
+export const VoxAC30Head: React.FC<VoxAC30HeadProps> = React.memo(({
   amp,
   onUpdateParam,
   onToggleBypass,
@@ -311,4 +311,4 @@ export const VoxAC30Head: React.FC<VoxAC30HeadProps> = ({
       </div>
     </div>
   );
-};
+});

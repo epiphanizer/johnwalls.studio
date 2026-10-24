@@ -34,7 +34,7 @@ jobs:
       - name: Install UI Dependencies & Build Web Bundle
         run: |
           cd ui
-          npm ci || npm install
+          npm ci
           npm run build
 
       - name: Clone JUCE Framework

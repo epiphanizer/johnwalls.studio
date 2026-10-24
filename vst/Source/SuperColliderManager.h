@@ -77,9 +77,12 @@ public:
     bool boot(int port = 57110);
     bool kill();
 
-    /** Actions: freeAll, testTone, reboot, runVisual (payload = sclang code), stopVisual,
+    /** Actions: freeAll, testTone, reboot, runVisual, openVisualWindow, toggleVisual, stopVisual,
         osc (payload = JSON {"target":"server"|"lang","address":"/x","args":[...]}). */
     bool executeAction(const std::string& action, const std::string& payload = "");
+
+    /** Returns built-in sclang visual code for known presets ("supercollider-lissajous", "supercollider-vector-cascade", etc.) */
+    static std::string getDefaultVisualCode(const std::string& preset = "supercollider-lissajous");
 
     SuperColliderStatus getStatus();
     juce::var getStatusAsVar();

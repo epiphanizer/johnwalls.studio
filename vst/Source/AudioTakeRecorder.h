@@ -68,11 +68,27 @@ public:
     /** Locates the JSON metadata file for a given take ID. */
     juce::File getTakeMetaFile(const juce::String& takeId) const;
 
-    /** Deletes both WAV and JSON files for a take. */
+    /** Locates the standalone HTML5 bundled visual file for a take ID. */
+    juce::File getTakeVisualHtmlFile(const juce::String& takeId) const;
+
+    /** Sets the active visualizer preset to bundle with takes ("supercollider-lissajous", etc.). */
+    void setVisualizerPreset(const juce::String& preset) { m_visualizerPreset = preset; }
+    juce::String getVisualizerPreset() const { return m_visualizerPreset; }
+
+    /** Deletes WAV, JSON, and bundled visual HTML files for a take. */
     bool deleteTake(const juce::String& takeId);
 
     /** Resolves the default directory for saving takes (~/Music/johnwalls.studio/takes). */
     static juce::File getTakesDirectory();
+
+    struct VisualSample {
+        double timeSec{0.0};
+        float peakDb{-96.0f};
+        float rmsDb{-96.0f};
+        float bpm{120.0f};
+        int bar{1};
+        float ppq{0.0f};
+    };
 
 private:
     void ensureTakesDirectory();
@@ -95,15 +111,18 @@ private:
     juce::String m_currentTakeId;
     juce::String m_currentTrackName;
     juce::String m_currentProjectName;
+    juce::String m_visualizerPreset{"supercollider-lissajous"};
     double m_currentBpm{120.0};
     int64_t m_recordingStartMs{0};
     juce::File m_currentWavFile;
     juce::File m_currentMetaFile;
+    juce::File m_currentVisualHtmlFile;
 
-    // Peak tracking during take
-    float m_takeMaxPeak{0.0f};
-    double m_takeSumSq{0.0};
-    int64_t m_takeSumSamples{0};
+    // Lock-free visual telemetry capture buffer
+    static constexpr int kMaxVisualFrames = 16384;
+    VisualSample m_visualFrames[kMaxVisualFrames];
+    std::atomic<int> m_visualFrameCount{0};
+    int m_samplesSinceLastVisualFrame{0};
 };
 
 } // namespace johnwalls::johnwalls

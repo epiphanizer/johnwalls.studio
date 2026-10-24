@@ -1,18 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { PedalBoardCanvas } from './components/PedalBoardCanvas';
 import { VirtualTerminal } from './components/VirtualTerminal';
 import { WaveformVisualizer } from './components/WaveformVisualizer';
 import { TopMenuBar } from './components/TopMenuBar';
 import { StudioModuleFlowRibbon } from './components/StudioModuleFlowRibbon';
 import { SP404Workstation } from './components/SP404Workstation';
+import { RC600Workstation } from './components/RC600Workstation';
 import { StateWorkstation } from './components/StateWorkstation';
+import { PerformanceDeck } from './components/PerformanceDeck';
 import { StudioWorkspaceModal, StudioWorkspace } from './components/StudioWorkspaceModal';
 import { PedalLibraryModal } from './components/PedalLibraryModal';
 import { StudioRoutingModal } from './components/StudioRoutingModal';
 import { TakeRecorderCockpit } from './components/TakeRecorderCockpit';
+import { VisualizerModal } from './components/VisualizerModal';
+import { GlobalCommandPalette } from './components/GlobalCommandPalette';
+import { CopilotDrawer } from './components/CopilotDrawer';
+import { SkipBackModal } from './components/SkipBackModal';
+import { WaveformChopDeck } from './components/WaveformChopDeck';
 import { audioEngine } from './components/AudioEngineBridge';
-import { sp404AudioEngine } from './components/SP404AudioEngine';
-import { stateBridge } from './utils/stateBridge';
+import { sp404AudioEngine, BankLetter } from './components/SP404AudioEngine';
+import { stateBridge, AudioTakeMetadata } from './utils/stateBridge';
 import {
   PedalInstance,
   PedalType,
@@ -43,150 +50,13 @@ import {
   getAllLibraryPedals
 } from './utils/pedalLibrary';
 
-const INITIAL_PEDALS: PedalInstance[] = [
-  {
-    id: 'dub_echo',
-    type: 'delay',
-    title: 'Dub Tape Echo',
-    color: 'amber',
-    bypassed: false,
-    parameters: {
-      time: { name: 'time', label: 'Time', value: 360, min: 20, max: 1200, step: 10, unit: 'ms' },
-      sync: { name: 'sync', label: 'Sync', value: 1, min: 0, max: 1, step: 1, unit: '' },
-      division: { name: 'division', label: 'Division', value: 7, min: 0, max: 13, step: 1, unit: '' },
-      feedback: { name: 'feedback', label: 'Repeat', value: 0.45, min: 0.0, max: 0.95, step: 0.01, unit: '' },
-      mix: { name: 'mix', label: 'Wet Mix', value: 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' },
-      flutter: { name: 'flutter', label: 'Flutter', value: 0.20, min: 0.0, max: 1.0, step: 0.01, unit: '' }
-    }
-  },
-  {
-    id: 'resonant_filter',
-    type: 'filter',
-    title: 'Moog Ladder 24',
-    color: 'crimson',
-    bypassed: false,
-    parameters: {
-      cutoff: { name: 'cutoff', label: 'Cutoff', value: 1400, min: 60, max: 20000, step: 50, unit: 'Hz' },
-      resonance: { name: 'resonance', label: 'Peak Q', value: 0.65, min: 0.0, max: 0.98, step: 0.01, unit: '' },
-      drive: { name: 'drive', label: 'Drive', value: 1.5, min: 1.0, max: 5.0, step: 0.1, unit: 'x' }
-    }
-  },
-  {
-    id: 'sidechain_ducker',
-    type: 'ducker',
-    title: 'Reactive Ducker',
-    color: 'cyan',
-    bypassed: false,
-    parameters: {
-      depth: { name: 'depth', label: 'Duck Amt', value: 14, min: 0, max: 36, step: 1, unit: 'dB' },
-      attack: { name: 'attack', label: 'Attack', value: 2.0, min: 0.1, max: 50, step: 0.5, unit: 'ms' },
-      release: { name: 'release', label: 'Release', value: 80, min: 10, max: 500, step: 5, unit: 'ms' }
-    }
-  },
-  {
-    id: 'mesa_mark3',
-    type: 'mesa',
-    category: 'amp',
-    title: 'Mesa Boogie Mark III',
-    color: 'rose',
-    bypassed: true,
-    parameters: {
-      channel: { name: 'channel', label: 'Channel', value: 2, min: 0, max: 2, step: 1, unit: '' },
-      gain: { name: 'gain', label: 'Volume 1', value: 7.5, min: 0, max: 10, step: 0.1, unit: '' },
-      leadDrive: { name: 'leadDrive', label: 'Lead Drive', value: 8.0, min: 0, max: 10, step: 0.1, unit: '' },
-      master: { name: 'master', label: 'Master 1', value: 6.0, min: 0, max: 10, step: 0.1, unit: '' },
-      leadMaster: { name: 'leadMaster', label: 'Lead Master', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-      bass: { name: 'bass', label: 'Bass', value: 4.0, min: 0, max: 10, step: 0.1, unit: '' },
-      mid: { name: 'mid', label: 'Middle', value: 5.0, min: 0, max: 10, step: 0.1, unit: '' },
-      treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-      presence: { name: 'presence', label: 'Presence', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-      eq80: { name: 'eq80', label: '80 Hz', value: 3.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-      eq240: { name: 'eq240', label: '240 Hz', value: 0.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-      eq750: { name: 'eq750', label: '750 Hz', value: -5.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-      eq2200: { name: 'eq2200', label: '2.2 kHz', value: 2.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
-      eq6600: { name: 'eq6600', label: '6.6 kHz', value: 4.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
-      eqActive: { name: 'eqActive', label: 'Graphic EQ In', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-      pullBright: { name: 'pullBright', label: 'Pull Bright', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-      pullShift: { name: 'pullShift', label: 'Pull Shift', value: 0.0, min: 0, max: 1, step: 1, unit: '' },
-      pullDeep: { name: 'pullDeep', label: 'Pull Deep', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-      simulClass: { name: 'simulClass', label: 'Simul-Class 85W', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-      cab: { name: 'cab', label: '4x12 V30 Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
-    }
-  },
-  {
-    id: 'vox_ac30',
-    type: 'vox',
-    category: 'amp',
-    title: 'Vox AC-30 Top Boost',
-    color: 'amber',
-    bypassed: true,
-    parameters: {
-      channel: { name: 'channel', label: 'Channel', value: 1, min: 0, max: 1, step: 1, unit: '' },
-      gain: { name: 'gain', label: 'Volume', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-      bass: { name: 'bass', label: 'Bass', value: 5.5, min: 0, max: 10, step: 0.1, unit: '' },
-      treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-      cut: { name: 'cut', label: 'Tone Cut', value: 3.5, min: 0, max: 10, step: 0.1, unit: '' },
-      chime: { name: 'chime', label: 'Chime', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-      brilliant: { name: 'brilliant', label: 'Brilliant Switch', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-      master: { name: 'master', label: 'Master', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-      cab: { name: 'cab', label: '2x12 Blue Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
-    }
-  }
-];
-
-const INITIAL_RULES: ReactiveRule[] = [
-  {
-    id: 'rule_breakdown_echo',
-    triggerType: 'state',
-    triggerTarget: 'breakdown',
-    targetNodeId: 'dub_echo',
-    targetParam: 'feedback',
-    action: 'ramp',
-    targetValue: 0.75,
-    duration: 2.0
-  },
-  {
-    id: 'rule_drop_filter',
-    triggerType: 'state',
-    triggerTarget: 'drop',
-    targetNodeId: 'resonant_filter',
-    targetParam: 'cutoff',
-    action: 'snap',
-    targetValue: 18000
-  },
-  {
-    id: 'rule_kick_duck',
-    triggerType: 'sensor',
-    triggerTarget: 'kick',
-    targetNodeId: 'sidechain_ducker',
-    targetParam: 'gain',
-    action: 'duck',
-    depthDb: 14
-  }
-];
-
-const INITIAL_STUDIO_MODULES: StudioModule[] = [
-  {
-    id: 'board_1',
-    type: 'pedal_board',
-    title: 'Pedal Board 1',
-    bypassed: false,
-    ampPlacement: 'outbound',
-    pedals: INITIAL_PEDALS
-  },
-  {
-    id: 'sp404_1',
-    type: 'sp404',
-    title: 'SP-404 Original / A',
-    bypassed: false
-  },
-  {
-    id: 'state_1',
-    type: 'state',
-    title: 'State Cockpit',
-    bypassed: false
-  }
-];
+import {
+  INITIAL_PEDALS,
+  INITIAL_RULES,
+  INITIAL_STUDIO_MODULES
+} from './constants/initialState';
+import { syncHostParametersToModules } from './utils/hostAutomation';
+import { executeStudioCommand } from './utils/commandExecutor';
 
 export const App: React.FC = () => {
   const [modules, setModules] = useState<StudioModule[]>(() => {
@@ -220,6 +90,27 @@ export const App: React.FC = () => {
   const [preselectedPedalToSaveId, setPreselectedPedalToSaveId] = useState<string | null>(null);
   const [isRoutingModalOpen, setIsRoutingModalOpen] = useState<boolean>(false);
   const [isCaptureDispatchOpen, setIsCaptureDispatchOpen] = useState<boolean>(false);
+  const [isVisualizerOpen, setIsVisualizerOpen] = useState<boolean>(false);
+  const [visualizerTake, setVisualizerTake] = useState<AudioTakeMetadata | null>(null);
+  const [isSkipBackOpen, setIsSkipBackOpen] = useState<boolean>(false);
+  const [hasSkipBackAudio, setHasSkipBackAudio] = useState<boolean>(false);
+  const [isAutoChopOpen, setIsAutoChopOpen] = useState<boolean>(false);
+  const [chopDeckBuffer, setChopDeckBuffer] = useState<AudioBuffer | null>(null);
+
+  const handleOpenAutoChop = useCallback((buffer: AudioBuffer) => {
+    setChopDeckBuffer(buffer);
+    setIsAutoChopOpen(true);
+  }, []);
+
+  useEffect(() => {
+    sp404AudioEngine.setOnSkipBackActivity((hasAudio) => {
+      setHasSkipBackAudio(hasAudio);
+    });
+    const ducker = audioEngine.getDuckerGain();
+    if (ducker) {
+      sp404AudioEngine.tapDryInput(ducker);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -246,14 +137,46 @@ export const App: React.FC = () => {
   }, [activeModuleId]);
 
   // Derived current board information
-  const activeModule = modules.find((m) => m.id === activeModuleId) || modules[0] || INITIAL_STUDIO_MODULES[0];
+  const activeModule = useMemo(
+    () => modules.find((m) => m.id === activeModuleId) || modules[0] || INITIAL_STUDIO_MODULES[0],
+    [modules, activeModuleId]
+  );
   const isBoardActive = activeModule.type === 'pedal_board';
-  const currentBoard = isBoardActive ? (activeModule as StudioPedalBoardModule) : null;
-  const currentPedals = currentBoard ? currentBoard.pedals : INITIAL_PEDALS;
+  const currentBoard = useMemo(
+    () => (isBoardActive ? (activeModule as StudioPedalBoardModule) : null),
+    [isBoardActive, activeModule]
+  );
+  const currentPedals = useMemo(
+    () => (currentBoard ? currentBoard.pedals : INITIAL_PEDALS),
+    [currentBoard]
+  );
   const currentAmpPlacement = currentBoard ? currentBoard.ampPlacement : 'outbound';
-  const activeWorkspace: StudioWorkspace = activeModule.type === 'sp404' ? 'sp404' : activeModule.type === 'state' ? 'state' : 'pedal_lab';
+  const [currentPresetName, setCurrentPresetName] = useState<string>(() => {
+    try {
+      return localStorage.getItem('johnwalls_active_preset_name') || 'Dub Echo & Space';
+    } catch {
+      return 'Dub Echo & Space';
+    }
+  });
 
-  const updateCurrentBoard = (updater: (board: StudioPedalBoardModule) => StudioPedalBoardModule) => {
+  const [activeWorkspace, setActiveWorkspace] = useState<StudioWorkspace>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const wsParam = params.get('workspace') as StudioWorkspace;
+        if (wsParam && ['pedal_lab', 'sp404', 'rc600', 'state', 'performance', 'unified'].includes(wsParam)) {
+          return wsParam;
+        }
+      }
+      const saved = localStorage.getItem('johnwalls_active_workspace') as StudioWorkspace;
+      if (saved && ['pedal_lab', 'sp404', 'rc600', 'state', 'performance', 'unified'].includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return 'pedal_lab';
+  });
+
+  const updateCurrentBoard = useCallback((updater: (board: StudioPedalBoardModule) => StudioPedalBoardModule) => {
     setModules((prev) =>
       prev.map((m) => {
         if (m.id === activeModuleId && m.type === 'pedal_board') {
@@ -262,7 +185,7 @@ export const App: React.FC = () => {
         return m;
       })
     );
-  };
+  }, [activeModuleId]);
 
   const [lastActiveModuleByType, setLastActiveModuleByType] = useState<Record<StudioModuleType, string>>(() => {
     try {
@@ -279,11 +202,28 @@ export const App: React.FC = () => {
   // Modal open on initial launch if workspace choice not yet configured
   const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState<boolean>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('modal') === 'false' || params.has('workspace')) {
+          return false;
+        }
+      }
       return localStorage.getItem('johnwalls_workspace_configured') !== 'true';
     } catch {
       return false;
     }
   });
+
+  const [isUnifiedMode, setIsUnifiedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('johnwalls_unified_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isPedalDockExpanded, setIsPedalDockExpanded] = useState<boolean>(true);
+  const [isPaletteOpen, setIsPaletteOpen] = useState<boolean>(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const mod = modules.find((m) => m.id === activeModuleId);
@@ -342,29 +282,24 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isRoutingModalOpen, activeWorkspace]);
 
-  const handleSelectWorkspace = (ws: StudioWorkspace, remember: boolean = true) => {
-    const targetType: StudioModuleType = ws === 'pedal_lab' ? 'pedal_board' : ws;
-    const currentActive = modules.find((m) => m.id === activeModuleId);
-
-    // If current active module is already of this workspace type, keep it!
-    if (!currentActive || currentActive.type !== targetType) {
-      const rememberedId = lastActiveModuleByType[targetType];
-      const match =
-        modules.find((m) => m.id === rememberedId) ||
-        modules.find((m) => m.type === targetType);
-      if (match) {
-        setActiveModuleId(match.id);
-      } else {
-        handleAddModule(targetType);
+  // Global shortcut listener for Raycast-style command palette (Cmd+K, Ctrl+K, or ` when outside inputs)
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+        return;
       }
-    }
-    if (remember) {
-      try {
-        localStorage.setItem('johnwalls_active_workspace', ws);
-        localStorage.setItem('johnwalls_workspace_configured', 'true');
-      } catch {}
-    }
-  };
+      if (e.key === '`' && !isInput && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setIsPaletteOpen((prev) => !prev);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, []);
 
   const [telemetry, setTelemetry] = useState<StateTelemetry>({
     musicalState: 'STEADY_GROOVE',
@@ -383,10 +318,191 @@ export const App: React.FC = () => {
     }
   ]);
 
-  const handleSelectInspectNode = (nodeId: string) => {
+  const addLog = useCallback((type: 'input' | 'output' | 'error' | 'system', content: string) => {
+    const time = new Date().toTimeString().split(' ')[0];
+    setLogs((prev) => [
+      ...prev.slice(-400),
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: time,
+        type,
+        content
+      }
+    ]);
+  }, []);
+
+  const handleSelectInspectNode = useCallback((nodeId: string) => {
     setInspectedNodeId(nodeId);
     audioEngine.sendInspectNodeToHost(nodeId);
-  };
+  }, []);
+
+  const handleSelectModule = useCallback((id: string) => {
+    setModules((prev) => {
+      const mod = prev.find((m) => m.id === id);
+      if (!mod) return prev;
+      try {
+        const ws: StudioWorkspace =
+          mod.type === 'sp404' ? 'sp404' : mod.type === 'state' ? 'state' : 'pedal_lab';
+        localStorage.setItem('johnwalls_active_workspace', ws);
+        localStorage.setItem('johnwalls_workspace_configured', 'true');
+      } catch {}
+      return prev;
+    });
+    setActiveModuleId(id);
+  }, []);
+
+  const handleMoveModule = useCallback((fromIndex: number, toIndex: number) => {
+    setModules((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const [item] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, item);
+      addLog('output', `Rearranged signal flow: Moved [${item.title}] ${fromIndex < toIndex ? 'later' : 'earlier'}.`);
+      return copy;
+    });
+  }, [addLog]);
+
+  const handleToggleModuleBypass = useCallback((id: string) => {
+    setModules((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          const nextBypassed = !m.bypassed;
+          addLog('output', `Module [${m.title}] is now ${nextBypassed ? 'BYPASSED' : 'ACTIVE'}.`);
+          if (m.type === 'sp404') {
+            const sp404Index = prev.findIndex((mod) => mod.id === id);
+            const boardIndex = prev.findIndex((mod) => mod.type === 'pedal_board');
+            const order = (sp404Index !== -1 && boardIndex !== -1 && sp404Index < boardIndex) ? 'before' : 'after';
+            audioEngine.routeSP404(order, sp404AudioEngine.getMasterGain(), nextBypassed);
+          }
+          return { ...m, bypassed: nextBypassed };
+        }
+        return m;
+      })
+    );
+  }, [addLog]);
+
+  const handleAddModule = useCallback((type: StudioModuleType) => {
+    setModules((prev) => {
+      if (type === 'pedal_board') {
+        const boardNum = prev.filter((m) => m.type === 'pedal_board').length + 1;
+        const newBoard: StudioPedalBoardModule = {
+          id: `board_${Date.now()}`,
+          type: 'pedal_board',
+          title: `Pedal Board ${boardNum}`,
+          bypassed: false,
+          ampPlacement: 'outbound',
+          pedals: [
+            {
+              id: `dub_echo_${Date.now()}`,
+              type: 'delay',
+              title: 'Tape Echo',
+              color: 'amber',
+              bypassed: false,
+              parameters: {
+                time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
+                feedback: { name: 'feedback', label: 'Repeat', value: 0.4, min: 0.0, max: 0.95, step: 0.01, unit: '' },
+                mix: { name: 'mix', label: 'Mix', value: 0.5, min: 0.0, max: 1.0, step: 0.01, unit: '' }
+              }
+            }
+          ]
+        };
+        setActiveModuleId(newBoard.id);
+        addLog('output', `Created new modular board: ${newBoard.title}`);
+        return [...prev, newBoard];
+      } else if (type === 'sp404') {
+        const spNum = prev.filter((m) => m.type === 'sp404').length + 1;
+        const newSp: StudioSP404Module = {
+          id: `sp404_${Date.now()}`,
+          type: 'sp404',
+          title: spNum === 1 ? 'SP-404 Original / A' : `SP-404 Original / A #${spNum}`,
+          bypassed: false
+        };
+        setActiveModuleId(newSp.id);
+        addLog('output', `Created new sampler module: ${newSp.title}`);
+        return [...prev, newSp];
+      } else if (type === 'state') {
+        const stateNum = prev.filter((m) => m.type === 'state').length + 1;
+        const newState: StudioStateModule = {
+          id: `state_${Date.now()}`,
+          type: 'state',
+          title: stateNum === 1 ? 'State Cockpit' : `State Cockpit #${stateNum}`,
+          bypassed: false
+        };
+        setActiveModuleId(newState.id);
+        addLog('output', `Created new module: ${newState.title}`);
+        return [...prev, newState];
+      }
+      return prev;
+    });
+  }, [addLog]);
+
+  const handleRemoveModule = useCallback((id: string) => {
+    setModules((prev) => {
+      if (prev.length <= 1) {
+        addLog('error', 'Cannot remove the last studio module in the pipeline.');
+        return prev;
+      }
+      const target = prev.find((m) => m.id === id);
+      const next = prev.filter((m) => m.id !== id);
+      setActiveModuleId((currentActiveId) => {
+        if (currentActiveId === id && next.length > 0) {
+          return next[0].id;
+        }
+        return currentActiveId;
+      });
+      if (target) {
+        addLog('output', `Removed module [${target.title}] from studio chain.`);
+      }
+      return next;
+    });
+  }, [addLog]);
+
+  const handleRenameModule = useCallback((id: string, newTitle: string) => {
+    setModules((prev) =>
+      prev.map((m) => {
+        if (m.id === id) {
+          return { ...m, title: newTitle.trim() || m.title };
+        }
+        return m;
+      })
+    );
+  }, []);
+
+  const handleSelectWorkspace = useCallback((ws: StudioWorkspace, remember: boolean = true) => {
+    setActiveWorkspace(ws);
+    if (ws === 'unified') {
+      setIsUnifiedMode(true);
+    } else {
+      setIsUnifiedMode(false);
+    }
+
+    if (remember) {
+      try {
+        localStorage.setItem('johnwalls_unified_mode', ws === 'unified' ? 'true' : 'false');
+        localStorage.setItem('johnwalls_active_workspace', ws);
+        localStorage.setItem('johnwalls_workspace_configured', 'true');
+      } catch {}
+    }
+
+    const targetType: StudioModuleType =
+      ws === 'sp404' ? 'sp404' : ws === 'state' ? 'state' : 'pedal_board';
+
+    setModules((prev) => {
+      const currentActive = prev.find((m) => m.id === activeModuleId);
+      if (!currentActive || currentActive.type !== targetType) {
+        const rememberedId = lastActiveModuleByType[targetType];
+        const match =
+          prev.find((m) => m.id === rememberedId) ||
+          prev.find((m) => m.type === targetType);
+        if (match) {
+          setActiveModuleId(match.id);
+        } else {
+          handleAddModule(targetType);
+        }
+      }
+      return prev;
+    });
+  }, [activeModuleId, lastActiveModuleByType, handleAddModule]);
 
   useEffect(() => {
     // Start live audio engine and initialize SP-404 sampler upfront on the shared AudioContext
@@ -413,190 +529,13 @@ export const App: React.FC = () => {
       audioEngine.syncRackToHost(initialBoard.pedals, initialBoard.ampPlacement);
     }
 
-    const isFloatDiff = (current: number, target: unknown): target is number => {
-      return typeof target === 'number' && Math.abs(current - target) > 0.05;
-    };
-
     // Synchronize parameter automation incoming from Ableton Live host (only on genuine changes)
     audioEngine.setHostParametersCallback((hostParams) => {
-      setModules((prevModules) => {
-        let anyChanged = false;
-        const nextModules = prevModules.map((module) => {
-          if (module.type !== 'pedal_board') return module;
-          const board = module as StudioPedalBoardModule;
-          let boardChanged = false;
-          const nextPedals = board.pedals.map((p) => {
-            let pedalChanged = false;
-            const newParams = { ...p.parameters };
-
-            // Mesa Boogie
-            if (p.id === 'mesa_mark3') {
-              if (hostParams.mesa_bypass !== undefined) {
-                const byp = Boolean(hostParams.mesa_bypass);
-                if (p.bypassed !== byp) {
-                  p = { ...p, bypassed: byp };
-                  pedalChanged = true;
-                }
-              }
-              if (isFloatDiff(newParams.gain.value, hostParams.mesa_gain)) {
-                newParams.gain = { ...newParams.gain, value: hostParams.mesa_gain };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.master.value, hostParams.mesa_master)) {
-                newParams.master = { ...newParams.master, value: hostParams.mesa_master };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.channel.value, hostParams.mesa_channel)) {
-                newParams.channel = { ...newParams.channel, value: hostParams.mesa_channel };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.bass.value, hostParams.mesa_bass)) {
-                newParams.bass = { ...newParams.bass, value: hostParams.mesa_bass };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.mid.value, hostParams.mesa_mid)) {
-                newParams.mid = { ...newParams.mid, value: hostParams.mesa_mid };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.treble.value, hostParams.mesa_treble)) {
-                newParams.treble = { ...newParams.treble, value: hostParams.mesa_treble };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.presence.value, hostParams.mesa_presence)) {
-                newParams.presence = { ...newParams.presence, value: hostParams.mesa_presence };
-                pedalChanged = true;
-              }
-            }
-
-            // Vox AC-30
-            if (p.id === 'vox_ac30') {
-              if (hostParams.vox_bypass !== undefined) {
-                const byp = Boolean(hostParams.vox_bypass);
-                if (p.bypassed !== byp) {
-                  p = { ...p, bypassed: byp };
-                  pedalChanged = true;
-                }
-              }
-              if (isFloatDiff(newParams.gain.value, hostParams.vox_gain)) {
-                newParams.gain = { ...newParams.gain, value: hostParams.vox_gain };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.channel.value, hostParams.vox_channel)) {
-                newParams.channel = { ...newParams.channel, value: hostParams.vox_channel };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.bass.value, hostParams.vox_bass)) {
-                newParams.bass = { ...newParams.bass, value: hostParams.vox_bass };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.treble.value, hostParams.vox_treble)) {
-                newParams.treble = { ...newParams.treble, value: hostParams.vox_treble };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.cut.value, hostParams.vox_cut)) {
-                newParams.cut = { ...newParams.cut, value: hostParams.vox_cut };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.chime.value, hostParams.vox_chime)) {
-                newParams.chime = { ...newParams.chime, value: hostParams.vox_chime };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.master.value, hostParams.vox_master)) {
-                newParams.master = { ...newParams.master, value: hostParams.vox_master };
-                pedalChanged = true;
-              }
-            }
-
-            // Delay
-            if (p.id === 'dub_echo') {
-              if (hostParams.delay_bypass !== undefined) {
-                const byp = Boolean(hostParams.delay_bypass);
-                if (p.bypassed !== byp) {
-                  p = { ...p, bypassed: byp };
-                  pedalChanged = true;
-                }
-              }
-              if (isFloatDiff(newParams.time.value, hostParams.delay_time)) {
-                newParams.time = { ...newParams.time, value: hostParams.delay_time };
-                pedalChanged = true;
-              }
-              if (isFloatDiff(newParams.feedback.value, hostParams.delay_fb)) {
-                newParams.feedback = { ...newParams.feedback, value: hostParams.delay_fb };
-                pedalChanged = true;
-              }
-            }
-
-            // Filter
-            if (p.id === 'resonant_filter') {
-              if (hostParams.filter_bypass !== undefined) {
-                const byp = Boolean(hostParams.filter_bypass);
-                if (p.bypassed !== byp) {
-                  p = { ...p, bypassed: byp };
-                  pedalChanged = true;
-                }
-              }
-              if (isFloatDiff(newParams.cutoff.value, hostParams.filter_cutoff)) {
-                newParams.cutoff = { ...newParams.cutoff, value: hostParams.filter_cutoff };
-                pedalChanged = true;
-              }
-            }
-
-            // Ducker
-            if (p.id === 'sidechain_ducker') {
-              if (hostParams.ducker_bypass !== undefined) {
-                const byp = Boolean(hostParams.ducker_bypass);
-                if (p.bypassed !== byp) {
-                  p = { ...p, bypassed: byp };
-                  pedalChanged = true;
-                }
-              }
-              if (isFloatDiff(newParams.depth.value, hostParams.ducker_depth)) {
-                newParams.depth = { ...newParams.depth, value: hostParams.ducker_depth };
-                pedalChanged = true;
-              }
-            }
-
-            if (pedalChanged) {
-              boardChanged = true;
-              return { ...p, parameters: newParams };
-            }
-            return p;
-          });
-
-          if (boardChanged) {
-            anyChanged = true;
-            return { ...board, pedals: nextPedals };
-          }
-          return board;
-        });
-
-        return anyChanged ? nextModules : prevModules;
-      });
+      setModules((prevModules) => syncHostParametersToModules(prevModules, hostParams));
     });
   }, [rules]);
 
-  const getMidiNoteName = (noteNum?: number): string => {
-    if (!noteNum || noteNum <= 0 || noteNum > 127) return '—';
-    const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    const octave = Math.floor(noteNum / 12) - 1;
-    const note = names[noteNum % 12];
-    return `${note}${octave}`;
-  };
-
-  const addLog = (type: 'input' | 'output' | 'error' | 'system', content: string) => {
-    const time = new Date().toTimeString().split(' ')[0];
-    setLogs((prev) => [
-      ...prev.slice(-400),
-      {
-        id: Math.random().toString(36).substring(2, 9),
-        timestamp: time,
-        type,
-        content
-      }
-    ]);
-  };
-
-  const handleUpdateParam = (pedalId: string, paramName: string, value: number) => {
+  const handleUpdateParam = useCallback((pedalId: string, paramName: string, value: number) => {
     updateCurrentBoard((board) => {
       const updated = board.pedals.map((p) => {
         if (p.id === pedalId) {
@@ -617,9 +556,9 @@ export const App: React.FC = () => {
       audioEngine.syncPedalParamToHost(pedalId, paramName, value);
       return { ...board, pedals: updated };
     });
-  };
+  }, [updateCurrentBoard]);
 
-  const handleToggleBypass = (pedalId: string) => {
+  const handleToggleBypass = useCallback((pedalId: string) => {
     updateCurrentBoard((board) => {
       let nextBypassed = false;
       const updated = board.pedals.map((p) => {
@@ -638,9 +577,9 @@ export const App: React.FC = () => {
       }
       return { ...board, pedals: updated };
     });
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleRemovePedal = (pedalId: string) => {
+  const handleRemovePedal = useCallback((pedalId: string) => {
     updateCurrentBoard((board) => {
       const updated = board.pedals.filter((p) => p.id !== pedalId);
       audioEngine.syncRemovePedalToHost(pedalId);
@@ -648,13 +587,17 @@ export const App: React.FC = () => {
       audioEngine.syncRackToHost(updated, board.ampPlacement);
       return { ...board, pedals: updated };
     });
-    if (inspectedNodeId === pedalId) {
-      handleSelectInspectNode('master');
-    }
+    setInspectedNodeId((prev) => {
+      if (prev === pedalId) {
+        audioEngine.sendInspectNodeToHost('master');
+        return 'master';
+      }
+      return prev;
+    });
     addLog('output', `Removed component [${pedalId}] from active chain.`);
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleToggleAmpPlacement = () => {
+  const handleToggleAmpPlacement = useCallback(() => {
     updateCurrentBoard((board) => {
       const next = board.ampPlacement === 'outbound' ? 'inbound' : 'outbound';
       audioEngine.setAmpPlacement(next);
@@ -667,33 +610,42 @@ export const App: React.FC = () => {
       );
       return { ...board, ampPlacement: next };
     });
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleToggleTerminal = () => {
-    if (!isTerminalOpen) {
-      setIsTerminalOpen(true);
-      setIsTerminalExpanded(false); // Opens collapsed single-line input bar at bottom
-    } else {
-      setIsTerminalOpen(false);
+  const handleToggleTerminal = useCallback(() => {
+    setIsTerminalOpen((prev) => {
+      if (!prev) {
+        setIsTerminalExpanded(false);
+        return true;
+      }
       setIsTerminalExpanded(false);
-    }
-  };
+      return false;
+    });
+  }, []);
 
-  const handleSaveUserPreset = (name: string, description?: string) => {
+  const handleSaveUserPreset = useCallback((name: string, description?: string) => {
     if (!name.trim()) return;
     const newPresetData = convertCurrentRackToPreset(name, currentPedals, currentAmpPlacement, description);
     const created = saveUserPreset(newPresetData);
     setUserPresets(loadUserPresets());
+    setCurrentPresetName(created.name);
+    try {
+      localStorage.setItem('johnwalls_active_preset_name', created.name);
+    } catch {}
     addLog('output', `Saved patch [${created.name}] to Library.`);
-  };
+  }, [currentPedals, currentAmpPlacement, addLog]);
 
-  const handleDeleteUserPreset = (id: string) => {
+  const handleDeleteUserPreset = useCallback((id: string) => {
     deleteUserPreset(id);
     setUserPresets(loadUserPresets());
     addLog('output', `Deleted patch from Library.`);
-  };
+  }, [addLog]);
 
-  const handleApplyRackPreset = (preset: RackPreset) => {
+  const handleApplyRackPreset = useCallback((preset: RackPreset) => {
+    setCurrentPresetName(preset.name);
+    try {
+      localStorage.setItem('johnwalls_active_preset_name', preset.name);
+    } catch {}
     updateCurrentBoard((board) => {
       audioEngine.setAmpPlacement(preset.ampPlacement);
 
@@ -772,11 +724,10 @@ export const App: React.FC = () => {
         addLog('output', `Loaded Factory Profile: ${preset.name}.`);
         return { ...board, pedals: updated, ampPlacement: preset.ampPlacement };
       }
-      return board;
     });
-  };
+  }, [updateCurrentBoard, handleSelectInspectNode, addLog]);
 
-  const handleResetAll = () => {
+  const handleResetAll = useCallback(() => {
     updateCurrentBoard((board) => {
       audioEngine.updatePedalParams(INITIAL_PEDALS);
       audioEngine.setAmpPlacement('outbound');
@@ -784,126 +735,126 @@ export const App: React.FC = () => {
       addLog('system', 'Reset all pedals and amplifiers to factory default settings.');
       return { ...board, pedals: INITIAL_PEDALS, ampPlacement: 'outbound' };
     });
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleAddPedal = (type: PedalType) => {
-    const id = `${type}_${currentPedals.length + 1}`;
-    let newPedal: PedalInstance;
-
-    if (type === 'delay') {
-      newPedal = {
-        id,
-        type: 'delay',
-        title: 'Tape Echo',
-        color: 'amber',
-        bypassed: false,
-        parameters: {
-          time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
-          feedback: { name: 'feedback', label: 'Repeat', value: 0.40, min: 0.0, max: 0.95, step: 0.01, unit: '' },
-          mix: { name: 'mix', label: 'Mix', value: 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' }
-        }
-      };
-    } else if (type === 'filter') {
-      newPedal = {
-        id,
-        type: 'filter',
-        title: 'Ladder Filter',
-        color: 'crimson',
-        bypassed: false,
-        parameters: {
-          cutoff: { name: 'cutoff', label: 'Cutoff', value: 1200, min: 60, max: 20000, step: 50, unit: 'Hz' },
-          resonance: { name: 'resonance', label: 'Res', value: 0.50, min: 0.0, max: 0.98, step: 0.01, unit: '' }
-        }
-      };
-    } else if (type === 'drive') {
-      newPedal = {
-        id,
-        type: 'drive',
-        title: 'Overdrive',
-        color: 'gold',
-        bypassed: false,
-        parameters: {
-          drive: { name: 'drive', label: 'Drive', value: 4.0, min: 1.0, max: 15.0, step: 0.5, unit: 'x' },
-          tone: { name: 'tone', label: 'Tone', value: 0.65, min: 0.1, max: 1.0, step: 0.05, unit: '' }
-        }
-      };
-    } else if (type === 'ducker') {
-      newPedal = {
-        id,
-        type: 'ducker',
-        title: 'Sidechain Ducker',
-        color: 'cyan',
-        bypassed: false,
-        parameters: {
-          depth: { name: 'depth', label: 'Depth', value: 16, min: 0, max: 36, step: 1, unit: 'dB' },
-          release: { name: 'release', label: 'Release', value: 75, min: 10, max: 400, step: 5, unit: 'ms' }
-        }
-      };
-    } else if (type === 'mesa') {
-      newPedal = {
-        id,
-        type: 'mesa',
-        category: 'amp',
-        title: 'Mesa Boogie Mark III',
-        color: 'rose',
-        bypassed: false,
-        parameters: {
-          channel: { name: 'channel', label: 'Channel', value: 2, min: 0, max: 2, step: 1, unit: '' },
-          gain: { name: 'gain', label: 'Volume 1', value: 7.5, min: 0, max: 10, step: 0.1, unit: '' },
-          leadDrive: { name: 'leadDrive', label: 'Lead Drive', value: 8.0, min: 0, max: 10, step: 0.1, unit: '' },
-          master: { name: 'master', label: 'Master 1', value: 6.0, min: 0, max: 10, step: 0.1, unit: '' },
-          leadMaster: { name: 'leadMaster', label: 'Lead Master', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          bass: { name: 'bass', label: 'Bass', value: 4.0, min: 0, max: 10, step: 0.1, unit: '' },
-          mid: { name: 'mid', label: 'Middle', value: 5.0, min: 0, max: 10, step: 0.1, unit: '' },
-          treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-          presence: { name: 'presence', label: 'Presence', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          eq80: { name: 'eq80', label: '80 Hz', value: 3.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq240: { name: 'eq240', label: '240 Hz', value: 0.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq750: { name: 'eq750', label: '750 Hz', value: -5.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq2200: { name: 'eq2200', label: '2.2 kHz', value: 2.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eq6600: { name: 'eq6600', label: '6.6 kHz', value: 4.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
-          eqActive: { name: 'eqActive', label: 'Graphic EQ In', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          pullBright: { name: 'pullBright', label: 'Pull Bright', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          pullShift: { name: 'pullShift', label: 'Pull Shift', value: 0.0, min: 0, max: 1, step: 1, unit: '' },
-          pullDeep: { name: 'pullDeep', label: 'Pull Deep', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          simulClass: { name: 'simulClass', label: 'Simul-Class 85W', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          cab: { name: 'cab', label: '4x12 V30 Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
-        }
-      };
-    } else {
-      newPedal = {
-        id,
-        type: 'vox',
-        category: 'amp',
-        title: 'Vox AC-30 Top Boost',
-        color: 'amber',
-        bypassed: false,
-        parameters: {
-          channel: { name: 'channel', label: 'Channel', value: 1, min: 0, max: 1, step: 1, unit: '' },
-          gain: { name: 'gain', label: 'Volume', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          bass: { name: 'bass', label: 'Bass', value: 5.5, min: 0, max: 10, step: 0.1, unit: '' },
-          treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-          cut: { name: 'cut', label: 'Tone Cut', value: 3.5, min: 0, max: 10, step: 0.1, unit: '' },
-          chime: { name: 'chime', label: 'Chime', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
-          brilliant: { name: 'brilliant', label: 'Brilliant Switch', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
-          master: { name: 'master', label: 'Master', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
-          cab: { name: 'cab', label: '2x12 Blue Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
-        }
-      };
-    }
-
+  const handleAddPedal = useCallback((type: PedalType) => {
     updateCurrentBoard((board) => {
+      const id = `${type}_${board.pedals.length + 1}`;
+      let newPedal: PedalInstance;
+
+      if (type === 'delay') {
+        newPedal = {
+          id,
+          type: 'delay',
+          title: 'Tape Echo',
+          color: 'amber',
+          bypassed: false,
+          parameters: {
+            time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
+            feedback: { name: 'feedback', label: 'Repeat', value: 0.40, min: 0.0, max: 0.95, step: 0.01, unit: '' },
+            mix: { name: 'mix', label: 'Mix', value: 0.50, min: 0.0, max: 1.0, step: 0.01, unit: '' }
+          }
+        };
+      } else if (type === 'filter') {
+        newPedal = {
+          id,
+          type: 'filter',
+          title: 'Ladder Filter',
+          color: 'crimson',
+          bypassed: false,
+          parameters: {
+            cutoff: { name: 'cutoff', label: 'Cutoff', value: 1200, min: 60, max: 20000, step: 50, unit: 'Hz' },
+            resonance: { name: 'resonance', label: 'Res', value: 0.50, min: 0.0, max: 0.98, step: 0.01, unit: '' }
+          }
+        };
+      } else if (type === 'drive') {
+        newPedal = {
+          id,
+          type: 'drive',
+          title: 'Overdrive',
+          color: 'gold',
+          bypassed: false,
+          parameters: {
+            drive: { name: 'drive', label: 'Drive', value: 4.0, min: 1.0, max: 15.0, step: 0.5, unit: 'x' },
+            tone: { name: 'tone', label: 'Tone', value: 0.65, min: 0.1, max: 1.0, step: 0.05, unit: '' }
+          }
+        };
+      } else if (type === 'ducker') {
+        newPedal = {
+          id,
+          type: 'ducker',
+          title: 'Sidechain Ducker',
+          color: 'cyan',
+          bypassed: false,
+          parameters: {
+            depth: { name: 'depth', label: 'Depth', value: 16, min: 0, max: 36, step: 1, unit: 'dB' },
+            release: { name: 'release', label: 'Release', value: 75, min: 10, max: 400, step: 5, unit: 'ms' }
+          }
+        };
+      } else if (type === 'mesa') {
+        newPedal = {
+          id,
+          type: 'mesa',
+          category: 'amp',
+          title: 'Mesa Boogie Mark III',
+          color: 'rose',
+          bypassed: false,
+          parameters: {
+            channel: { name: 'channel', label: 'Channel', value: 2, min: 0, max: 2, step: 1, unit: '' },
+            gain: { name: 'gain', label: 'Volume 1', value: 7.5, min: 0, max: 10, step: 0.1, unit: '' },
+            leadDrive: { name: 'leadDrive', label: 'Lead Drive', value: 8.0, min: 0, max: 10, step: 0.1, unit: '' },
+            master: { name: 'master', label: 'Master 1', value: 6.0, min: 0, max: 10, step: 0.1, unit: '' },
+            leadMaster: { name: 'leadMaster', label: 'Lead Master', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            bass: { name: 'bass', label: 'Bass', value: 4.0, min: 0, max: 10, step: 0.1, unit: '' },
+            mid: { name: 'mid', label: 'Middle', value: 5.0, min: 0, max: 10, step: 0.1, unit: '' },
+            treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
+            presence: { name: 'presence', label: 'Presence', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            eq80: { name: 'eq80', label: '80 Hz', value: 3.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq240: { name: 'eq240', label: '240 Hz', value: 0.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq750: { name: 'eq750', label: '750 Hz', value: -5.5, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq2200: { name: 'eq2200', label: '2.2 kHz', value: 2.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eq6600: { name: 'eq6600', label: '6.6 kHz', value: 4.0, min: -12, max: 12, step: 0.5, unit: 'dB' },
+            eqActive: { name: 'eqActive', label: 'Graphic EQ In', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            pullBright: { name: 'pullBright', label: 'Pull Bright', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            pullShift: { name: 'pullShift', label: 'Pull Shift', value: 0.0, min: 0, max: 1, step: 1, unit: '' },
+            pullDeep: { name: 'pullDeep', label: 'Pull Deep', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            simulClass: { name: 'simulClass', label: 'Simul-Class 85W', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            cab: { name: 'cab', label: '4x12 V30 Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
+          }
+        };
+      } else {
+        newPedal = {
+          id,
+          type: 'vox',
+          category: 'amp',
+          title: 'Vox AC-30 Top Boost',
+          color: 'amber',
+          bypassed: false,
+          parameters: {
+            channel: { name: 'channel', label: 'Channel', value: 1, min: 0, max: 1, step: 1, unit: '' },
+            gain: { name: 'gain', label: 'Volume', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            bass: { name: 'bass', label: 'Bass', value: 5.5, min: 0, max: 10, step: 0.1, unit: '' },
+            treble: { name: 'treble', label: 'Treble', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
+            cut: { name: 'cut', label: 'Tone Cut', value: 3.5, min: 0, max: 10, step: 0.1, unit: '' },
+            chime: { name: 'chime', label: 'Chime', value: 6.5, min: 0, max: 10, step: 0.1, unit: '' },
+            brilliant: { name: 'brilliant', label: 'Brilliant Switch', value: 1.0, min: 0, max: 1, step: 1, unit: '' },
+            master: { name: 'master', label: 'Master', value: 7.0, min: 0, max: 10, step: 0.1, unit: '' },
+            cab: { name: 'cab', label: '2x12 Blue Cab', value: 1.0, min: 0, max: 1, step: 1, unit: '' }
+          }
+        };
+      }
+
       const updated = [...board.pedals, newPedal];
       audioEngine.syncAddPedalToHost(type, id);
       audioEngine.updatePedalParams(updated);
       audioEngine.syncRackToHost(updated, board.ampPlacement);
+      handleSelectInspectNode(id);
+      addLog('output', `Created ${newPedal.category === 'amp' ? 'amplifier' : 'pedal'} [${id}] (${newPedal.title}) in chain.`);
       return { ...board, pedals: updated };
     });
-    setInspectedNodeId(id);
-    addLog('output', `Created ${newPedal.category === 'amp' ? 'amplifier' : 'pedal'} [${id}] (${newPedal.title}) in chain.`);
-  };
+  }, [updateCurrentBoard, handleSelectInspectNode, addLog]);
 
-  const handleAddPedalFromLibrary = (template: LibraryPedalTemplate) => {
+  const handleAddPedalFromLibrary = useCallback((template: LibraryPedalTemplate) => {
     updateCurrentBoard((board) => {
       const newPedal = instantiatePedalFromLibrary(template, board.pedals.length);
       const updated = [...board.pedals, newPedal];
@@ -914,22 +865,22 @@ export const App: React.FC = () => {
         audioEngine.syncPedalParamToHost(newPedal.id, k, v.value);
       }
       audioEngine.syncRackToHost(updated, board.ampPlacement);
+      addLog('output', `Loaded [${template.title}] (${template.subtitle}) from Library into active board.`);
       return { ...board, pedals: updated };
     });
-    addLog('output', `Loaded [${template.title}] (${template.subtitle}) from Library into active board.`);
-  };
+  }, [updateCurrentBoard, addLog]);
 
-  const handleSavePedalToLibrary = (pedal: PedalInstance, customName: string, description?: string) => {
+  const handleSavePedalToLibrary = useCallback((pedal: PedalInstance, customName: string, description?: string) => {
     const saved = saveUserPedalTemplate(customName, pedal, description);
     addLog('output', `Saved custom pedal [${saved.title}] to your personal Pedal Library.`);
-  };
+  }, [addLog]);
 
-  const handleOpenSavePedalModal = (pedal: PedalInstance) => {
+  const handleOpenSavePedalModal = useCallback((pedal: PedalInstance) => {
     setPreselectedPedalToSaveId(pedal.id);
     setIsPedalLibraryOpen(true);
-  };
+  }, []);
 
-  const handleAddSensor = (sensor: { id: string; label: string; freq: number; type: 'lowpass' | 'bandpass' | 'highpass'; color: string }) => {
+  const handleAddSensor = useCallback((sensor: { id: string; label: string; freq: number; type: 'lowpass' | 'bandpass' | 'highpass'; color: string }) => {
     const ok = audioEngine.addSensoryChannel(sensor);
     if (ok) {
       setTelemetry((prev) => ({
@@ -940,749 +891,56 @@ export const App: React.FC = () => {
     } else {
       addLog('error', `Sensory channel [${sensor.id}] already exists.`);
     }
-  };
+  }, [addLog]);
 
-  const handleSelectModule = (id: string) => {
-    const mod = modules.find((m) => m.id === id);
-    if (!mod) return;
-    setActiveModuleId(id);
-    try {
-      const ws: StudioWorkspace =
-        mod.type === 'sp404' ? 'sp404' : mod.type === 'state' ? 'state' : 'pedal_lab';
-      localStorage.setItem('johnwalls_active_workspace', ws);
-      localStorage.setItem('johnwalls_workspace_configured', 'true');
-    } catch {}
-  };
-
-  const handleMoveModule = (fromIndex: number, toIndex: number) => {
-    setModules((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const [item] = copy.splice(fromIndex, 1);
-      copy.splice(toIndex, 0, item);
-      addLog('output', `Rearranged signal flow: Moved [${item.title}] ${fromIndex < toIndex ? 'later' : 'earlier'}.`);
-      return copy;
+  const handleExecuteCommand = useCallback((cmd: string) => {
+    executeStudioCommand(cmd, {
+      addLog,
+      clearLogs: () => setLogs([]),
+      telemetry,
+      currentPedals,
+      modules,
+      rules,
+      userPresets,
+      setInspectedNodeId,
+      handleUpdateParam,
+      handleToggleBypass,
+      handleRemovePedal,
+      handleAddPedal,
+      handleAddPedalFromLibrary,
+      handleSaveUserPreset,
+      handleApplyRackPreset,
+      handleToggleAmpPlacement,
+      handleSelectWorkspace,
+      setIsRoutingModalOpen,
+      setIsPedalLibraryOpen,
+      setIsCaptureDispatchOpen,
+      setIsVisualizerOpen,
+      setVisualizerTake
     });
-  };
-
-  const handleToggleModuleBypass = (id: string) => {
-    setModules((prev) =>
-      prev.map((m) => {
-        if (m.id === id) {
-          const nextBypassed = !m.bypassed;
-          addLog('output', `Module [${m.title}] is now ${nextBypassed ? 'BYPASSED' : 'ACTIVE'}.`);
-          if (m.type === 'sp404') {
-            const sp404Index = prev.findIndex((mod) => mod.id === id);
-            const boardIndex = prev.findIndex((mod) => mod.type === 'pedal_board');
-            const order = (sp404Index !== -1 && boardIndex !== -1 && sp404Index < boardIndex) ? 'before' : 'after';
-            audioEngine.routeSP404(order, sp404AudioEngine.getMasterGain(), nextBypassed);
-          }
-          return { ...m, bypassed: nextBypassed };
-        }
-        return m;
-      })
-    );
-  };
-
-  const handleAddModule = (type: StudioModuleType) => {
-    if (type === 'pedal_board') {
-      const boardNum = modules.filter((m) => m.type === 'pedal_board').length + 1;
-      const newBoard: StudioPedalBoardModule = {
-        id: `board_${Date.now()}`,
-        type: 'pedal_board',
-        title: `Pedal Board ${boardNum}`,
-        bypassed: false,
-        ampPlacement: 'outbound',
-        pedals: [
-          {
-            id: `dub_echo_${Date.now()}`,
-            type: 'delay',
-            title: 'Tape Echo',
-            color: 'amber',
-            bypassed: false,
-            parameters: {
-              time: { name: 'time', label: 'Time', value: 350, min: 20, max: 1200, step: 10, unit: 'ms' },
-              feedback: { name: 'feedback', label: 'Repeat', value: 0.4, min: 0.0, max: 0.95, step: 0.01, unit: '' },
-              mix: { name: 'mix', label: 'Mix', value: 0.5, min: 0.0, max: 1.0, step: 0.01, unit: '' }
-            }
-          }
-        ]
-      };
-      setModules((prev) => [...prev, newBoard]);
-      setActiveModuleId(newBoard.id);
-      addLog('output', `Created new modular board: ${newBoard.title}`);
-    } else if (type === 'sp404') {
-      const spNum = modules.filter((m) => m.type === 'sp404').length + 1;
-      const newSp: StudioSP404Module = {
-        id: `sp404_${Date.now()}`,
-        type: 'sp404',
-        title: spNum === 1 ? 'SP-404 Original / A' : `SP-404 Original / A #${spNum}`,
-        bypassed: false
-      };
-      setModules((prev) => [...prev, newSp]);
-      setActiveModuleId(newSp.id);
-      addLog('output', `Created new sampler module: ${newSp.title}`);
-    } else if (type === 'state') {
-      const stateNum = modules.filter((m) => m.type === 'state').length + 1;
-      const newState: StudioStateModule = {
-        id: `state_${Date.now()}`,
-        type: 'state',
-        title: stateNum === 1 ? 'State Cockpit' : `State Cockpit #${stateNum}`,
-        bypassed: false
-      };
-      setModules((prev) => [...prev, newState]);
-      setActiveModuleId(newState.id);
-      addLog('output', `Created new module: ${newState.title}`);
-    }
-  };
-
-  const handleRemoveModule = (id: string) => {
-    if (modules.length <= 1) {
-      addLog('error', 'Cannot remove the last studio module in the pipeline.');
-      return;
-    }
-    const target = modules.find((m) => m.id === id);
-    setModules((prev) => {
-      const next = prev.filter((m) => m.id !== id);
-      if (activeModuleId === id && next.length > 0) {
-        setActiveModuleId(next[0].id);
-      }
-      return next;
-    });
-    if (target) {
-      addLog('output', `Removed module [${target.title}] from studio chain.`);
-    }
-  };
-
-  const handleRenameModule = (id: string, newTitle: string) => {
-    setModules((prev) =>
-      prev.map((m) => {
-        if (m.id === id) {
-          return { ...m, title: newTitle.trim() || m.title };
-        }
-        return m;
-      })
-    );
-  };
-
-  const handleExecuteCommand = (cmd: string) => {
-    if (cmd.startsWith('__stream ')) {
-      addLog('output', cmd.substring(9));
-      return;
-    }
-
-    addLog('input', cmd);
-    const tokens = cmd.trim().split(/\s+/);
-    const verb = tokens[0]?.toLowerCase();
-
-    if (verb === 'clear' || verb === 'cls') {
-      setLogs([]);
-      return;
-    }
-
-    if (verb === 'stream') {
-      const mode = tokens[1]?.toLowerCase();
-      addLog('output', `Live state streaming ${mode === 'off' ? 'PAUSED' : 'ACTIVE'}.`);
-      return;
-    }
-
-    if (verb === 'help') {
-      addLog(
-        'output',
-        '=== johnwalls.studio Virtual CLI Commands ===\n' +
-          'ABLETON LIVE & DAW STATE:\n' +
-          '  status / state / report         Live full-system Ableton state dossier\n' +
-          '  transport                       Playhead timing, BPM, bar.beat, time signature, host track\n' +
-          '  tracks / session                Inspect all Ableton Live session tracks across plugin instances\n' +
-          '  midi [status|on|off]            Live MIDI monitor (last note, velocity, pitch, channel)\n' +
-          '  audio / meters                  Real-time ASCII meters: Peak dB, RMS dB, sidechain & 5 sensors\n' +
-          '  rhythm                          Detected rhythm pattern, density/bar, dominant register & state\n' +
-          '  stream <on|off>                 Toggle live stream of Ableton events into terminal\n\n' +
-          'AUDIO CAPTURE & WEB PUBLISHING (johnwalls.studio):\n' +
-          '  record / rec [start|stop|status] Capture live audio directly from Ableton master\n' +
-          '  takes / list takes               Inspect all local 24-bit/48kHz recorded audio takes\n' +
-          '  publish [takeId|latest] [title]  Direct ship audio take to johnwalls.studio with SuperCollider visualizer\n' +
-          '  ship [takeId|latest] [title]     Alias for \'publish\'\n' +
-          '  push / deploy                    Build and auto-push studio app bundle to https://johnwalls.studio/app\n' +
-          '  dispatch / publish open          Open tactile Audio Capture & Web Publishing Cockpit modal\n\n' +
-          'SUPERCOLLIDER DSP ENGINE:\n' +
-          '  sc <boot|kill|status|test|free> Control scsynth audio server with real OSC\n\n' +
-          'STUDIO RACK & SIGNAL CHAIN:\n' +
-          '  add pedal <delay|filter|drive|ducker|mesa|vox>   Instantiate DSP stompbox or amp\n' +
-          '  remove <id>                                     Remove pedal from active board\n' +
-          '  bypass <id>                                     Toggle pedal bypass\n' +
-          '  placement <outbound|inbound>                    Switch amp stage (Post-FX vs Pre-FX)\n' +
-          '  preset v-curve                                  Apply iconic Mesa 5-band EQ V-curve\n' +
-          '  inspect <id|master>                             Route solo oscilloscope to target\n' +
-          '  set <id>.<param> <val>                          Adjust pedal/amp parameter\n' +
-          '  list [pedals|modules|sensors|tracks|takes]      Inspect rack, modules, sensors, tracks or takes\n' +
-          '  routing                                         Open Universal Studio Signal Flow Matrix\n\n' +
-          'TERMINAL CONTROLS:\n' +
-          '  clear / cls                                     Clear terminal log buffer'
-      );
-      return;
-    }
-
-    if (verb === 'record' || verb === 'rec') {
-      const sub = tokens[1]?.toLowerCase();
-      if (!sub || sub === 'status') {
-        stateBridge.getTakeStatus().then((st) => {
-          if (!st) {
-            addLog('output', 'Audio Take Recorder: Not responding.');
-            return;
-          }
-          addLog(
-            'output',
-            `=== ABLETON AUDIO TAKE RECORDER ===\n` +
-              `  Recording:     ${st.isRecording ? '● ACTIVE (RECORDING)' : '⏸ IDLE'}\n` +
-              `  Duration:      ${st.durationSeconds.toFixed(2)}s\n` +
-              `  Current Track: "${st.currentTrackName || telemetry.currentTrackName || 'Master'}"\n` +
-              `  Peak Level:    ${st.peakDb > -60 ? st.peakDb.toFixed(1) + ' dBFS' : '-∞ dBFS'}\n` +
-              `  Auto-Rec:      ${st.autoRecEnabled ? 'ENABLED (Sync with Ableton Play)' : 'DISABLED'}\n\n` +
-              `Commands: 'record start', 'record stop', 'takes', 'publish latest "<title>"', 'dispatch'`
-          );
-        }).catch((err: any) => addLog('error', `Record Status Error: ${err?.message || String(err)}`));
-      } else if (sub === 'start') {
-        const track = tokens.slice(2).join(' ') || telemetry.currentTrackName || 'Master';
-        stateBridge.startRecording(track, 'Ableton Live Session', telemetry.bpm).then((ok) => {
-          if (ok) {
-            addLog(
-              'output',
-              `● RECORDING LIVE AUDIO from "${track}" at ${telemetry.bpm.toFixed(1)} BPM...\n` +
-                `  Writing 24-bit/48kHz WAV directly to local takes archive.\n` +
-                `  Type 'record stop' to finish and prepare for publishing.`
-            );
-          } else {
-            addLog('error', 'Failed to start audio take recording. Check telemetry connection.');
-          }
-        });
-      } else if (sub === 'stop') {
-        stateBridge.stopRecording().then((take) => {
-          if (take) {
-            addLog(
-              'output',
-              `■ RECORDING COMPLETE & FINALIZED.\n` +
-                `  Take ID:   ${take.takeId}\n` +
-                `  Track:     "${take.trackName}"\n` +
-                `  Duration:  ${take.durationSeconds.toFixed(2)}s (${take.barCount} bars)\n` +
-                `  BPM:       ${take.bpm}\n` +
-                `  Peak:      ${take.peakDb.toFixed(1)} dBFS\n\n` +
-                `Ready to ship! Type 'publish latest "${take.trackName} Take"' or 'dispatch' to ship to johnwalls.studio.`
-            );
-          } else {
-            addLog('output', 'Recording stopped. No active take recorded.');
-          }
-        }).catch((err: any) => addLog('error', `Record Stop Error: ${err?.message || String(err)}`));
-      } else {
-        addLog('error', 'Usage: record <start [trackName]|stop|status>');
-      }
-      return;
-    }
-
-    if (verb === 'takes') {
-      stateBridge.getRecentTakes().then((takes) => {
-        if (!takes || takes.length === 0) {
-          addLog('output', '=== AUDIO TAKES ARCHIVE ===\n  No recorded takes yet. Run "record start" to capture Ableton audio.');
-          return;
-        }
-        const lines = takes
-          .map((t, i) => `  [${i + 1}] ${t.takeId} | "${t.trackName}" | ${t.durationSeconds.toFixed(1)}s | ${t.barCount} bars | ${t.bpm} BPM | Peak: ${t.peakDb.toFixed(1)} dB`)
-          .join('\n');
-        addLog(
-          'output',
-          `=== AUDIO TAKES ARCHIVE (${takes.length} takes) ===\n${lines}\n\nType 'publish <takeId> "<title>"' or 'publish latest' to ship to johnwalls.studio.`
-        );
-      }).catch((err: any) => addLog('error', `Takes Error: ${err?.message || String(err)}`));
-      return;
-    }
-
-    if (verb === 'publish' || verb === 'ship' || verb === 'dispatch') {
-      const target = tokens[1]?.toLowerCase();
-      if (!target || target === 'open' || target === 'cockpit' || target === 'modal' || verb === 'dispatch') {
-        setIsCaptureDispatchOpen(true);
-        addLog('output', 'Opened Audio Capture & Web Publishing Cockpit.');
-        return;
-      }
-
-      stateBridge.getRecentTakes().then(async (takes) => {
-        if (!takes || takes.length === 0) {
-          addLog('error', 'No audio takes available to publish. Capture one first with "record start" or click PUBLISH TO WEB.');
-          return;
-        }
-
-        let selectedTake = takes[0];
-        let titleTokensStart = 2;
-
-        if (target === 'latest') {
-          selectedTake = takes[0];
-          titleTokensStart = 2;
-        } else {
-          const match = takes.find((t) => t.takeId.toLowerCase().includes(target));
-          if (match) {
-            selectedTake = match;
-            titleTokensStart = 2;
-          } else {
-            titleTokensStart = 1;
-            selectedTake = takes[0];
-          }
-        }
-
-        const title = tokens.slice(titleTokensStart).join(' ').replace(/^["']|["']$/g, '').trim() ||
-          `${selectedTake.trackName || 'Ableton'} Live Take`;
-
-        addLog(
-          'output',
-          `[1/2] Packaging audio take [${selectedTake.takeId}] ("${title}")...\n` +
-            `[2/2] Transmitting to https://johnwalls.studio/api/johnwalls/publish...`
-        );
-
-        const res = await stateBridge.publishTake(selectedTake.takeId, {
-          title,
-          artist: 'John Walls',
-          description: `Captured live from Ableton Live session ("${selectedTake.trackName}") at ${selectedTake.bpm} BPM.`,
-          visualizerPreset: 'supercollider-lissajous',
-          targetUrl: 'https://johnwalls.studio/api/johnwalls/publish'
-        });
-
-        if (res.ok) {
-          addLog(
-            'output',
-            `✓ TRACK PUBLISHED SUCCESSFULLY TO JOHNWALLS.STUDIO!\n` +
-              `  Title:       ${title}\n` +
-              `  Take ID:     ${selectedTake.takeId}\n` +
-              `  Public URL:  ${res.publicUrl || 'https://johnwalls.studio'}\n` +
-              `  Listen Live: https://johnwalls.studio/studio\n` +
-              `  Visualizer:  SuperCollider Lissajous (Dynamic Audio-Reactive)`
-          );
-        } else {
-          addLog('error', `Publish failed: ${res.error || 'Server error'}`);
-        }
-      }).catch((err: any) => addLog('error', `Publish Error: ${err?.message || String(err)}`));
-      return;
-    }
-
-    if (verb === 'push' || verb === 'deploy' || verb === 'autopush') {
-      const targetUrl = tokens[1] || 'https://johnwalls.studio/api/johnwalls/deploy';
-      addLog(
-        'output',
-        `🚀 [1/3] Kicking off johnwalls.studio auto-push & build pipeline...\n` +
-          `   Target endpoint: ${targetUrl}`
-      );
-      stateBridge
-        .deployStudioApp({ deployUrl: targetUrl })
-        .then((res) => {
-          if (res.ok) {
-            addLog(
-              'output',
-              `✓ STUDIO WEB APP PUSHED & DEPLOYED SUCCESSFULLY!\n` +
-                `  Public URL: ${res.publicUrl || 'https://johnwalls.studio/app'}\n` +
-                `  Output:\n` +
-                (res.output ? res.output.trim().split('\n').map((l) => '    ' + l).join('\n') : '    Deployed production web bundle cleanly.')
-            );
-          } else {
-            addLog(
-              'error',
-              `Push failed: ${res.error || 'Server error'}\n` +
-                (res.output ? `Output:\n${res.output}` : '')
-            );
-          }
-        })
-        .catch((err: any) => addLog('error', `Deploy Error: ${err?.message || String(err)}`));
-      return;
-    }
-
-    if (verb === 'routing' || verb === 'route') {
-      setIsRoutingModalOpen(true);
-      addLog('output', 'Opened Universal Studio Signal Flow & Routing Matrix.');
-      return;
-    }
-
-    if (verb === 'state' || verb === 'cockpit') {
-      handleSelectWorkspace('state', true);
-      addLog('output', 'Switched active workspace to STATE Cockpit.');
-      return;
-    }
-
-    if (verb === 'sc' || verb === 'supercollider') {
-      const sub = tokens[1]?.toLowerCase();
-      if (!sub || sub === 'status') {
-        stateBridge.getSuperColliderStatus().then((res: SuperColliderServerStatus | null) => {
-          if (!res) {
-            addLog('output', 'SuperCollider: plugin not reachable.');
-            return;
-          }
-          addLog(
-            'output',
-            `=== SuperCollider Server ===\n  Status: ${res.statusText}\n  Port: ${res.port} | PID: ${res.pid}\n  CPU: ${res.avgCPU.toFixed(1)}% (Peak: ${res.peakCPU.toFixed(1)}%)\n  Synths: ${res.numSynths} | Nodes: ${res.numNodes} | SR: ${res.sampleRate}\n  Binary: ${res.binaryPath || 'not found'}\n  Visual patch: ${res.visualRunning ? 'running' : 'stopped'}${res.lastError ? `\n  Error: ${res.lastError}` : ''}`
-          );
-        }).catch((err: any) => addLog('error', `SC Status Error: ${err?.message || String(err)}`));
-      } else if (sub === 'boot') {
-        stateBridge.bootSuperCollider().then((res: SuperColliderServerStatus) => {
-          addLog(res.lastError && !res.isBooting && !res.isRunning ? 'error' : 'output', res.lastError && !res.isBooting && !res.isRunning ? `SuperCollider boot failed: ${res.lastError}` : `SuperCollider: ${res.statusText} (Port: ${res.port}). Run 'sc status' to confirm it is up.`);
-        }).catch((err: any) => addLog('error', `SC Boot Error: ${err?.message || String(err)}`));
-      } else if (sub === 'kill') {
-        stateBridge.killSuperCollider().then(() => {
-          addLog('output', 'SuperCollider Server Stopped.');
-        }).catch((err: any) => addLog('error', `SC Kill Error: ${err?.message || String(err)}`));
-      } else if (sub === 'test') {
-        stateBridge.sendSuperColliderAction('testTone').then((res: SuperColliderServerStatus) => {
-          addLog(res.lastError ? 'error' : 'output', res.lastError || 'Sent 440Hz test tone to scsynth (plays on your system output).');
-        }).catch((err: any) => addLog('error', `SC Test Tone Error: ${err?.message || String(err)}`));
-      } else if (sub === 'free') {
-        stateBridge.sendSuperColliderAction('freeAll').then((res: SuperColliderServerStatus) => {
-          addLog(res.lastError ? 'error' : 'output', res.lastError || 'Sent /g_freeAll (free all active nodes) to scsynth.');
-        }).catch((err: any) => addLog('error', `SC Free Error: ${err?.message || String(err)}`));
-      } else {
-        addLog('error', 'Usage: sc <boot|kill|status|test|free>');
-      }
-      return;
-    }
-
-    if (verb === 'midi' || verb === 'reactive') {
-      const sub = tokens[1]?.toLowerCase();
-      if (!sub || sub === 'status' || sub === 'monitor') {
-        const noteName = getMidiNoteName(telemetry.lastMidiNote);
-        const vel = telemetry.lastMidiVelocity || 0;
-        const velFrac = Math.min(1, Math.max(0, vel / 127));
-        const velBar = '█'.repeat(Math.round(velFrac * 12)) + '░'.repeat(12 - Math.round(velFrac * 12));
-        addLog(
-          'output',
-          `=== ABLETON LIVE MIDI MONITOR ===\n` +
-            `  Status:          ${telemetry.isMidiActive ? 'ACTIVE' : 'IDLE'}\n` +
-            `  MIDI Channel:    ${telemetry.lastMidiChannel || 1}\n` +
-            `  Last Note:       ${noteName} (${telemetry.lastMidiNote || 0})\n` +
-            `  Last Velocity:   ${vel} [${velBar}]\n` +
-            `  Total Events:    ${telemetry.totalMidiEvents || 0}\n` +
-            `  Reactive Engine: ${telemetry.reactiveMidi?.enabled ? 'ENGAGED' : 'BYPASSED'}\n\n` +
-            `Tip: Type 'midi rules' or 'midi on' / 'midi off'.`
-        );
-        return;
-      }
-      if (sub === 'rules') {
-        stateBridge.fetchReactiveMidiRules().then((rules) => {
-          const ruleList = rules.map((r, i) => `  [${i + 1}] ${r.name} (${r.enabled ? 'ACTIVE' : 'MUTED'} | When [${r.sourceTrackFilter}] is ${r.triggerRhythm} -> ${r.actionType})`).join('\n');
-          addLog(
-            'output',
-            `=== REACTIVE MIDI RULES (${rules.length}) ===\n${ruleList}`
-          );
-        }).catch((err) => addLog('error', `MIDI Error: ${err?.message || String(err)}`));
-        return;
-      } else if (sub === 'on' || sub === 'enable') {
-        stateBridge.setReactiveMidiEnabled(true).then(() => {
-          addLog('output', 'Reactive MIDI Engine ENGAGED (Observing all DAW tracks).');
-        });
-        return;
-      } else if (sub === 'off' || sub === 'disable' || sub === 'bypass') {
-        stateBridge.setReactiveMidiEnabled(false).then(() => {
-          addLog('output', 'Reactive MIDI Engine BYPASSED.');
-        });
-        return;
-      } else if (sub === 'preset') {
-        const num = tokens[2];
-        if (num === '1') {
-          stateBridge.setReactiveMidiRules([
-            {
-              id: 'rule_bass_1_4',
-              name: 'Bass 1/4 ➔ Lead 1/16 Running Arp',
-              enabled: true,
-              sourceTrackFilter: 'bass',
-              triggerRhythm: '1/4',
-              actionType: 'arp_1_16',
-              param: 1.0,
-              scOscAddress: '/state/rhythm'
-            },
-            {
-              id: 'rule_bass_1_16',
-              name: 'Bass 1/16 ➔ Lead 1/4 Offbeat Stabs',
-              enabled: true,
-              sourceTrackFilter: 'bass',
-              triggerRhythm: '1/16',
-              actionType: 'stabs_1_4',
-              param: 1.0,
-              scOscAddress: '/state/rhythm'
-            }
-          ]).then(() => {
-            stateBridge.setReactiveMidiEnabled(true);
-            addLog('output', 'Applied Reactive Preset 1: Bass 1/4 ➔ 1/16 Arp | Bass 1/16 ➔ 1/4 Stabs.');
-          });
-        } else if (num === '2') {
-          stateBridge.setReactiveMidiRules([
-            {
-              id: 'rule_drum_ratchet',
-              name: 'Drums 1/16 ➔ 4x Trap Ratchet Burst',
-              enabled: true,
-              sourceTrackFilter: 'drum',
-              triggerRhythm: '1/16',
-              actionType: 'ratchet_4x',
-              param: 4.0,
-              scOscAddress: '/state/ratchet'
-            }
-          ]).then(() => {
-            stateBridge.setReactiveMidiEnabled(true);
-            addLog('output', 'Applied Reactive Preset 2: Drums ➔ Trap 4x Ratchets.');
-          });
-        } else {
-          addLog('error', 'Usage: midi preset <1|2>');
-        }
-        return;
-      } else {
-        addLog('error', 'Usage: midi <status|on|off|rules|preset <1|2>>');
-        return;
-      }
-    }
-
-    if (verb === 'transport' || verb === 'playhead') {
-      const transportStr = telemetry.isPlaying ? '▶ PLAYING' : '⏸ STOPPED';
-      const ppqStr = telemetry.ppqPosition ? telemetry.ppqPosition.toFixed(2) : '0.00';
-      addLog(
-        'output',
-        `=== ABLETON LIVE TRANSPORT & TIMING ===\n` +
-          `  Transport:      ${transportStr}\n` +
-          `  Tempo:          ${telemetry.bpm.toFixed(2)} BPM\n` +
-          `  Time Signature: ${telemetry.timeSigNum || 4}/${telemetry.timeSigDen || 4}\n` +
-          `  Bar Position:   Bar ${telemetry.barNumber}\n` +
-          `  Beat / PPQ:     ${ppqStr} PPQ\n` +
-          `  Host Track:     "${telemetry.currentTrackName || 'Master'}"\n` +
-          `  Audio Host:     Ableton Live (VST3/AU)`
-      );
-      return;
-    }
-
-    if (verb === 'tracks' || verb === 'session') {
-      stateBridge.getSessionTracks().then((tracks: AbletonTrackInfo[]) => {
-        const lines = tracks
-          .map(
-            (t: AbletonTrackInfo, i: number) =>
-              `  • [${i + 1}] "${t.trackName}" (${t.trackType.toUpperCase()}) | MIDI Ch: ${t.midiChannel} | Events: ${t.totalMidiEvents} | Last Note: ${t.lastNoteNumber > 0 ? getMidiNoteName(t.lastNoteNumber) + ' (' + t.lastNoteNumber + ')' : 'None'} | Peak: ${t.peakDb.toFixed(1)} dB`
-          )
-          .join('\n');
-        addLog(
-          'output',
-          `=== ABLETON LIVE SESSION TRACKS (${tracks.length}) ===\n${lines || '  (No other active tracks detected - load johnwalls.studio on other tracks to link)'}`
-        );
-      }).catch((err: any) => addLog('error', `Tracks Error: ${err?.message || String(err)}`));
-      return;
-    }
-
-    if (verb === 'inspect' || verb === 'solo') {
-      const target = tokens[1]?.toLowerCase();
-      if (!target || target === 'master') {
-        setInspectedNodeId('master');
-        addLog('output', 'Solo oscilloscope routed to MASTER OUT.');
-      } else if (currentPedals.some((p) => p.id === target)) {
-        setInspectedNodeId(target);
-        addLog('output', `Solo oscilloscope routed to [${target}].`);
-      } else {
-        addLog('error', `Node '${target}' not found. Available: master, ${currentPedals.map((p) => p.id).join(', ')}`);
-      }
-      return;
-    }
-
-    if (verb === 'placement') {
-      const mode = tokens[1]?.toLowerCase();
-      if (mode === 'inbound' || mode === 'outbound') {
-        handleToggleAmpPlacement();
-      } else {
-        addLog('error', 'Usage: placement <outbound|inbound>');
-      }
-      return;
-    }
-
-    if (verb === 'preset' || verb === 'library') {
-      const action = tokens[1]?.toLowerCase();
-      if (!action || action === 'list') {
-        const userList = userPresets.map((p, i) => `  [User ${i + 1}] ${p.name} (${p.pedals.length} units)`).join('\n');
-        const factoryList = FACTORY_PRESETS.map((p, i) => `  [Factory ${i + 1}] ${p.name}`).join('\n');
-        addLog('output', `=== STUDIO RACK LIBRARY ===\nUser Patches:\n${userList || '  (None)'}\n\nFactory Profiles:\n${factoryList}\n\nTip: Type 'library pedals' to browse individual pedals or 'library open' for GUI.`);
-      } else if (action === 'pedals' || action === 'catalog') {
-        const pedals = getAllLibraryPedals();
-        const list = pedals
-          .map((p, i) => `  [${i + 1}] ${p.title} (${p.category.toUpperCase()}): ${p.subtitle}`)
-          .join('\n');
-        addLog('output', `=== PEDAL & AMPLIFIER LIBRARY (${pedals.length} PRESETS) ===\n${list}\n\nType 'library add <title>' to load onto active board.`);
-      } else if (action === 'add') {
-        const query = tokens.slice(2).join(' ').toLowerCase();
-        if (!query) {
-          addLog('error', 'Usage: library add <pedal name or keyword>');
-          return;
-        }
-        const pedals = getAllLibraryPedals();
-        const match = pedals.find(
-          (p) => p.title.toLowerCase().includes(query) || p.id.toLowerCase().includes(query)
-        );
-        if (match) {
-          handleAddPedalFromLibrary(match);
-        } else {
-          addLog('error', `No library pedal matched '${query}'. Run 'library pedals' to browse all.`);
-        }
-      } else if (action === 'open') {
-        setIsPedalLibraryOpen(true);
-        addLog('output', 'Opened Pedal & Amplifier Library in GUI.');
-      } else if (action === 'save') {
-        const name = tokens.slice(2).join(' ') || 'User Patch';
-        handleSaveUserPreset(name);
-      } else {
-        const match = FACTORY_PRESETS.find(
-          (p) => p.id.includes(action) || p.name.toLowerCase().includes(action)
-        ) || userPresets.find((p) => p.name.toLowerCase().includes(action));
-        if (match) {
-          handleApplyRackPreset(match);
-        } else {
-          addLog('error', `Unknown preset or library action: '${tokens[1]}'. Type 'library list', 'library pedals', or 'library add <name>'.`);
-        }
-      }
-      return;
-    }
-
-    if (verb === 'status' || verb === 'state' || verb === 'report') {
-      const peak = telemetry.peakDb ?? -60;
-      const rms = telemetry.rmsDb ?? -60;
-      const peakFrac = Math.max(0, Math.min(1, (peak + 60) / 60));
-      const rmsFrac = Math.max(0, Math.min(1, (rms + 60) / 60));
-      const peakBar = '█'.repeat(Math.round(peakFrac * 12)) + '░'.repeat(12 - Math.round(peakFrac * 12));
-      const rmsBar = '█'.repeat(Math.round(rmsFrac * 12)) + '░'.repeat(12 - Math.round(rmsFrac * 12));
-      const transportStr = telemetry.isPlaying ? '▶ PLAYING' : '⏸ STOPPED';
-      const timeSigStr = `${telemetry.timeSigNum || 4}/${telemetry.timeSigDen || 4}`;
-      const ppqStr = telemetry.ppqPosition ? telemetry.ppqPosition.toFixed(2) : '0.00';
-      const noteName = getMidiNoteName(telemetry.lastMidiNote);
-      const sensorsText = telemetry.sensors
-        .map((s) => `    • [${s.id}] @${s.frequencyHz}Hz: hits: ${s.totalHits.toString().padStart(3)} | energy: ${(s.energy * 100).toFixed(0)}%`)
-        .join('\n');
-
-      addLog(
-        'output',
-        `=== ABLETON LIVE TELEMETRY DOSSIER ===\n` +
-          `  TRANSPORT:     ${transportStr} at ${telemetry.bpm.toFixed(2)} BPM | TimeSig: ${timeSigStr}\n` +
-          `  PLAYHEAD:      Bar ${telemetry.barNumber} | PPQ: ${ppqStr}\n` +
-          `  HOST TRACK:    "${telemetry.currentTrackName || 'Master'}"\n` +
-          `  AUDIO LEVELS:  Peak: ${peak > -60 ? peak.toFixed(1) : '-∞'} dBFS [${peakBar}] | RMS: ${rms > -60 ? rms.toFixed(1) : '-∞'} dBFS [${rmsBar}]\n` +
-          `  MUSICAL STATE: ${telemetry.musicalState}\n` +
-          `  MIDI IN:       Ch: ${telemetry.lastMidiChannel || 1} | Note: ${noteName} (${telemetry.lastMidiNote || 0}) | Total: ${telemetry.totalMidiEvents || 0} events\n` +
-          `  SENSORS:       ${telemetry.sensors.length} active frequency detectors:\n${sensorsText}\n` +
-          `  SUPERCOLLIDER: ${telemetry.supercollider?.isRunning ? `ACTIVE (Port ${telemetry.supercollider.port}, PID ${telemetry.supercollider.pid})` : 'OFFLINE'}`
-      );
-      return;
-    }
-
-    if (verb === 'audio' || verb === 'meters' || verb === 'levels') {
-      const peak = telemetry.peakDb ?? -60;
-      const rms = telemetry.rmsDb ?? -60;
-      const peakFrac = Math.max(0, Math.min(1, (peak + 60) / 60));
-      const rmsFrac = Math.max(0, Math.min(1, (rms + 60) / 60));
-      const peakBar = '█'.repeat(Math.round(peakFrac * 16)) + '░'.repeat(16 - Math.round(peakFrac * 16));
-      const rmsBar = '█'.repeat(Math.round(rmsFrac * 16)) + '░'.repeat(16 - Math.round(rmsFrac * 16));
-      const scFrac = Math.max(0, Math.min(1, telemetry.sidechainRMS));
-      const scBar = '█'.repeat(Math.round(scFrac * 16)) + '░'.repeat(16 - Math.round(scFrac * 16));
-
-      const sensorBars = telemetry.sensors
-        .map((s) => {
-          const frac = Math.max(0, Math.min(1, s.energy));
-          const bar = '█'.repeat(Math.round(frac * 10)) + '░'.repeat(10 - Math.round(frac * 10));
-          return `    • [${s.id}] @${s.frequencyHz}Hz: hits: ${s.totalHits.toString().padStart(4)} | [${bar}] ${(s.energy * 100).toFixed(0)}%`;
-        })
-        .join('\n');
-
-      addLog(
-        'output',
-        `=== LIVE AUDIO & SENSOR METERS ===\n` +
-          `  Master Peak:   ${peak > -60 ? peak.toFixed(1).padStart(5) : ' -∞  '} dBFS [${peakBar}]\n` +
-          `  Master RMS:    ${rms > -60 ? rms.toFixed(1).padStart(5) : ' -∞  '} dBFS [${rmsBar}]\n` +
-          `  Sidechain RMS: ${telemetry.sidechainRMS.toFixed(2).padStart(5)}      [${scBar}]\n` +
-          `  Sensory Channels:\n${sensorBars}`
-      );
-      return;
-    }
-
-    if (verb === 'rhythm') {
-      const r = telemetry.reactiveMidi;
-      addLog(
-        'output',
-        `=== RHYTHM & MUSICAL STATE ANALYZER ===\n` +
-          `  Musical State:    ${telemetry.musicalState}\n` +
-          `  Rhythm Pattern:   ${r?.rhythmPattern || 'idle'}\n` +
-          `  Note Density:     ${r?.noteDensity ? r.noteDensity.toFixed(1) : '0.0'} hits/bar\n` +
-          `  Avg Interval:     ${r?.avgIntervalBeats ? r.avgIntervalBeats.toFixed(2) : '0.00'} beats\n` +
-          `  Dominant Register:${r?.dominantRegister === 0 ? 'Bass' : r?.dominantRegister === 1 ? 'Low-Mid' : r?.dominantRegister === 2 ? 'Mid' : 'High'}`
-      );
-      return;
-    }
-
-    if (verb === 'list') {
-      const target = tokens[1]?.toLowerCase() || 'pedals';
-      if (target === 'pedals') {
-        const text = currentPedals
-          .map((p, i) => `  [${i + 1}] ${p.id} (${p.type}) [${p.bypassed ? 'BYPASSED' : 'ACTIVE'}]`)
-          .join('\n');
-        addLog('output', `Active Pedal Chain (${currentPedals.length}):\n${text}`);
-      } else if (target === 'modules' || target === 'flow') {
-        const text = modules
-          .map((m, i) => `  [${i + 1}] ${m.id} (${m.type}) "${m.title}" [${m.bypassed ? 'BYPASSED' : 'ACTIVE'}]`)
-          .join('\n');
-        addLog('output', `Studio Pipeline Flow (${modules.length} modules):\n${text}`);
-      } else if (target === 'sensors') {
-        const text = telemetry.sensors
-          .map((s) => `  • [${s.id}] ${s.label}: ${s.type} @ ${s.frequencyHz}Hz (Hits: ${s.totalHits})`)
-          .join('\n');
-        addLog('output', `Active Sensory Channels (${telemetry.sensors.length}):\n${text}`);
-      } else if (target === 'tracks' || target === 'session') {
-        stateBridge.getSessionTracks().then((tracks: AbletonTrackInfo[]) => {
-          const lines = tracks
-            .map(
-              (t: AbletonTrackInfo, i: number) =>
-                `  • [${i + 1}] ${t.trackName} (${t.trackType.toUpperCase()}) | MIDI Ch: ${t.midiChannel} | Total Events: ${t.totalMidiEvents} | Peak: ${t.peakDb.toFixed(1)} dB`
-            )
-            .join('\n');
-          addLog('output', `Detected Session Tracks (${tracks.length}):\n${lines || '  (No tracks detected)'}`);
-        }).catch((err: any) => addLog('error', `Tracks Error: ${err?.message || String(err)}`));
-      } else if (target === 'takes') {
-        stateBridge.getRecentTakes().then((takes) => {
-          const lines = takes
-            .map(
-              (t, i) =>
-                `  [${i + 1}] ${t.takeId} | "${t.trackName}" | ${t.durationSeconds.toFixed(1)}s (${t.barCount} bars) | ${t.bpm} BPM`
-            )
-            .join('\n');
-          addLog('output', `Recorded Audio Takes (${takes.length}):\n${lines || '  (No takes recorded)'}`);
-        }).catch((err: any) => addLog('error', `Takes Error: ${err?.message || String(err)}`));
-      }
-      return;
-    }
-
-    if (verb === 'add') {
-      const type = tokens[2]?.toLowerCase() as PedalType;
-      if (type && ['delay', 'filter', 'drive', 'ducker', 'mesa', 'vox'].includes(type)) {
-        handleAddPedal(type);
-      } else {
-        addLog('error', `Unknown pedal type: '${tokens[2]}'. Valid types: delay, filter, drive, ducker, mesa, vox.`);
-      }
-      return;
-    }
-
-    if (verb === 'bypass') {
-      const id = tokens[1];
-      if (currentPedals.some((p) => p.id === id)) {
-        handleToggleBypass(id);
-      } else {
-        addLog('error', `Component '${id}' not found in active board.`);
-      }
-      return;
-    }
-
-    if (verb === 'set') {
-      const target = tokens[1];
-      const val = parseFloat(tokens[2]);
-      if (target && !isNaN(val)) {
-        const [id, param] = target.split('.');
-        handleUpdateParam(id, param, val);
-        addLog('output', `Set [${id}.${param}] = ${val}`);
-      } else {
-        addLog('error', 'Usage: set <node_id>.<param> <value>');
-      }
-      return;
-    }
-
-    addLog('error', `Unknown command: '${cmd}'. Type 'help' for instructions.`);
-  };
+  }, [
+    addLog,
+    telemetry,
+    currentPedals,
+    modules,
+    rules,
+    userPresets,
+    setInspectedNodeId,
+    handleUpdateParam,
+    handleToggleBypass,
+    handleRemovePedal,
+    handleAddPedal,
+    handleAddPedalFromLibrary,
+    handleSaveUserPreset,
+    handleApplyRackPreset,
+    handleToggleAmpPlacement,
+    handleSelectWorkspace,
+    setIsRoutingModalOpen,
+    setIsPedalLibraryOpen,
+    setIsCaptureDispatchOpen,
+    setIsVisualizerOpen,
+    setVisualizerTake
+  ]);
 
   const handleHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -1708,6 +966,7 @@ export const App: React.FC = () => {
         <TopMenuBar
           onApplyRackPreset={handleApplyRackPreset}
           userPresets={userPresets}
+          currentPresetName={currentPresetName}
           onSaveCurrentRack={handleSaveUserPreset}
           onDeleteUserPreset={handleDeleteUserPreset}
           ampPlacement={currentAmpPlacement}
@@ -1730,25 +989,35 @@ export const App: React.FC = () => {
           onOpenPedalLibrary={() => setIsPedalLibraryOpen(true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
           onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
-        />
-
-        {/* Global Studio Signal Flow Ribbon */}
-        <StudioModuleFlowRibbon
-          modules={modules}
-          activeModuleId={activeModuleId}
-          onSelectModule={handleSelectModule}
-          onMoveModule={handleMoveModule}
-          onToggleModuleBypass={handleToggleModuleBypass}
-          onAddModule={handleAddModule}
-          onRemoveModule={handleRemoveModule}
-          onRenameModule={handleRenameModule}
-          onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
-          onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+          onOpenSkipBack={() => setIsSkipBackOpen(true)}
+          hasSkipBackAudio={hasSkipBackAudio}
+          onOpenPalette={() => setIsPaletteOpen(true)}
+          onToggleCopilot={() => setIsCopilotOpen(!isCopilotOpen)}
+          isCopilotOpen={isCopilotOpen}
+          onOpenVisualizer={() => {
+            setVisualizerTake(null);
+            setIsVisualizerOpen(true);
+          }}
         />
       </div>
 
       {/* Main Workspace Body */}
-      {activeWorkspace === 'pedal_lab' ? (
+      {activeWorkspace === 'performance' || isUnifiedMode ? (
+        <PerformanceDeck
+          pedals={currentPedals}
+          onUpdateParam={handleUpdateParam}
+          onToggleBypass={handleToggleBypass}
+          inspectedNodeId={inspectedNodeId}
+          onSelectInspectNode={handleSelectInspectNode}
+          bpm={telemetry.bpm}
+          telemetry={telemetry}
+          onOpenFullSP404={() => handleSelectWorkspace('sp404', true)}
+          onOpenFullPedals={() => handleSelectWorkspace('pedal_lab', true)}
+          onOpenRC600={() => handleSelectWorkspace('rc600', true)}
+          onOpenSkipBack={() => setIsSkipBackOpen(true)}
+          onOpenAutoChop={handleOpenAutoChop}
+        />
+      ) : activeWorkspace === 'pedal_lab' ? (
         <>
           {/* Live Solo Waveform Oscilloscope Strip */}
           {isScopeVisible && (
@@ -1788,6 +1057,18 @@ export const App: React.FC = () => {
       ) : activeWorkspace === 'sp404' ? (
         <SP404Workstation
           onSwitchToPedalLab={() => handleSelectWorkspace('pedal_lab', true)}
+          onSwitchToRC600={() => handleSelectWorkspace('rc600', true)}
+          onSwitchToState={() => handleSelectWorkspace('state', true)}
+          onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
+          onOpenSkipBack={() => setIsSkipBackOpen(true)}
+          onOpenAutoChop={handleOpenAutoChop}
+          telemetry={telemetry}
+        />
+      ) : activeWorkspace === 'rc600' ? (
+        <RC600Workstation
+          onSwitchToPedalLab={() => handleSelectWorkspace('pedal_lab', true)}
+          onSwitchToSP404={() => handleSelectWorkspace('sp404', true)}
+          onSwitchToPerformance={() => handleSelectWorkspace('performance', true)}
           onSwitchToState={() => handleSelectWorkspace('state', true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
           telemetry={telemetry}
@@ -1802,6 +1083,10 @@ export const App: React.FC = () => {
           onSwitchToSP404={() => handleSelectWorkspace('sp404', true)}
           onOpenRoutingModal={() => setIsRoutingModalOpen(true)}
           onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+          onOpenVisualizer={() => {
+            setVisualizerTake(null);
+            setIsVisualizerOpen(true);
+          }}
         />
       )}
 
@@ -1862,6 +1147,66 @@ export const App: React.FC = () => {
         currentTrackName={telemetry.currentTrackName || 'Master'}
         currentBpm={telemetry.bpm}
         sessionTracks={telemetry.sessionTracks || []}
+        onOpenVisualizer={(take) => {
+          setVisualizerTake(take || null);
+          setIsVisualizerOpen(true);
+        }}
+      />
+
+      {/* Real-Time Audio-Reactive 60 FPS SuperCollider Visualizer Modal */}
+      <VisualizerModal
+        isOpen={isVisualizerOpen}
+        onClose={() => setIsVisualizerOpen(false)}
+        telemetry={telemetry}
+        auditionTake={visualizerTake}
+        onOpenCaptureDispatch={() => setIsCaptureDispatchOpen(true)}
+      />
+
+      {/* 25-Second Retrospective Skip-Back Capture Modal */}
+      <SkipBackModal
+        isOpen={isSkipBackOpen}
+        onClose={() => setIsSkipBackOpen(false)}
+        sp404Engine={sp404AudioEngine}
+        bpm={telemetry.bpm}
+        onOpenAutoChop={handleOpenAutoChop}
+      />
+
+      {/* Hybrid Transient Auto-Chop Deck */}
+      <WaveformChopDeck
+        isOpen={isAutoChopOpen}
+        onClose={() => {
+          setIsAutoChopOpen(false);
+          setChopDeckBuffer(null);
+        }}
+        audioBuffer={chopDeckBuffer}
+        sp404Engine={sp404AudioEngine}
+        bpm={telemetry.bpm}
+        activeBank="A"
+        onSlicesCommitted={(count) => {
+          addLog('output', `Sliced sample into ${count} pads with Choke Group 2.`);
+        }}
+      />
+
+      {/* Global Raycast Command Palette (Cmd+K / ~) */}
+      <GlobalCommandPalette
+        isOpen={isPaletteOpen}
+        onClose={() => setIsPaletteOpen(false)}
+        onExecuteCommand={handleExecuteCommand}
+        onSwitchWorkspace={(ws) => handleSelectWorkspace(ws as StudioWorkspace, true)}
+        onOpenSkipBack={() => setIsSkipBackOpen(true)}
+        onOpenAutoChop={() => {
+          const buf = sp404AudioEngine.getSkipBackAudioBuffer('master', 15.0);
+          if (buf) handleOpenAutoChop(buf);
+        }}
+      />
+
+      {/* AI Copilot Drawer */}
+      <CopilotDrawer
+        isOpen={isCopilotOpen}
+        onToggle={() => setIsCopilotOpen(!isCopilotOpen)}
+        telemetry={telemetry}
+        onExecuteCommand={handleExecuteCommand}
+        commandHistory={logs.map((l) => l.content || '').filter(Boolean)}
       />
     </div>
   );

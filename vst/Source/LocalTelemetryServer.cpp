@@ -3,6 +3,16 @@
 
 namespace johnwalls::johnwalls {
 
+namespace {
+
+juce::StringArray makeLoginPythonCommand(const juce::String& scriptPath)
+{
+    // Keep login-shell PATH setup while forwarding each argument separately.
+    return { "/bin/zsh", "-lc", "exec python3 \"$@\"", "python3", scriptPath };
+}
+
+}
+
 LocalTelemetryServer::LocalTelemetryServer(JohnwallsStudioAudioProcessor& processor, int port)
     : Thread("LocalTelemetryServer"), m_processor(processor), m_port(port)
 {
@@ -16,12 +26,11 @@ void LocalTelemetryServer::start() {
     if (isThreadRunning()) return;
     m_shouldExit = false;
 
-    // Try primary port, or fall back to 3013 / 3014 if occupied
-    if (!m_serverSocket.createListener(m_port, "127.0.0.1")) {
-        m_port = 3013;
-        if (!m_serverSocket.createListener(m_port, "127.0.0.1")) {
-            m_port = 3014;
-            m_serverSocket.createListener(m_port, "127.0.0.1");
+    // Try primary port, or fall back to higher ports if occupied by other plugin instances
+    for (int p = m_port; p <= m_port + 20; ++p) {
+        if (m_serverSocket.createListener(p, "127.0.0.1")) {
+            m_port = p;
+            break;
         }
     }
 
@@ -32,7 +41,7 @@ void LocalTelemetryServer::stop() {
     m_shouldExit = true;
     signalThreadShouldExit();
     m_serverSocket.close();
-    stopThread(500);
+    stopThread(2000);
 }
 
 void LocalTelemetryServer::run() {
@@ -328,6 +337,15 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         searchDir(juce::File::getSpecialLocation(juce::File::userDesktopDirectory));
         searchDir(juce::File::getSpecialLocation(juce::File::userMusicDirectory));
         searchDir(juce::File::getSpecialLocation(juce::File::userDocumentsDirectory));
+        juce::File cacheVol("/Volumes/cache/archive/music");
+        if (cacheVol.isDirectory()) searchDir(cacheVol);
+        juce::File jwVol("/Volumes/johnwalls");
+        if (jwVol.isDirectory()) {
+            juce::File v1 = jwVol.getChildFile("Archive up to Oct 5th 2026/Volume 1");
+            if (v1.isDirectory()) searchDir(v1);
+            juce::File v1b = jwVol.getChildFile("Backup Oct 6th/Volume 1");
+            if (v1b.isDirectory()) searchDir(v1b);
+        }
 
         std::sort(files.begin(), files.end(), [](const juce::File& a, const juce::File& b) {
             return a.getLastModificationTime() > b.getLastModificationTime();
@@ -659,6 +677,102 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         return;
     }
 
+    if (method == "POST" && path.startsWith("/sp404/transpose")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        if (parsed.isObject()) {
+            float val = static_cast<float>(parsed.getProperty("transpose", parsed.getProperty("value", 0.0)));
+            m_processor.setSP404GlobalTranspose(val);
+        }
+        juce::String reply = "{\"ok\":true}\r\n";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" +
+            reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/sp404/hold")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        if (parsed.isObject()) {
+            bool hold = static_cast<bool>(parsed.getProperty("hold", parsed.getProperty("value", parsed.getProperty("enabled", false))));
+            m_processor.setSP404Hold(hold);
+        }
+        juce::String reply = "{\"ok\":true}\r\n";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" +
+            reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/sp404/pad/label")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        if (parsed.isObject()) {
+            int bank = 0;
+            auto bankVar = parsed.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            int padId = static_cast<int>(parsed.getProperty("padId", parsed.getProperty("pad", 1)));
+            juce::String label = parsed.getProperty("label", parsed.getProperty("value", "")).toString();
+            m_processor.setSP404PadLabel(bank, padId, label);
+        }
+        juce::String reply = "{\"ok\":true}\r\n";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" +
+            reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/sp404/pad/param")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        if (parsed.isObject()) {
+            int bank = 0;
+            auto bankVar = parsed.getProperty("bank", "A");
+            if (bankVar.isString()) {
+                juce::String bStr = bankVar.toString().toUpperCase();
+                if (!bStr.isEmpty()) bank = std::clamp(static_cast<int>(bStr[0] - 'A'), 0, 9);
+            } else {
+                bank = static_cast<int>(bankVar);
+            }
+            int padId = static_cast<int>(parsed.getProperty("padId", parsed.getProperty("pad", 1)));
+            juce::String param = parsed.getProperty("param", "").toString();
+            if (param == "label") {
+                juce::String label = parsed.getProperty("value", parsed.getProperty("label", "")).toString();
+                m_processor.setSP404PadLabel(bank, padId, label);
+            } else {
+                float val = static_cast<float>(parsed.getProperty("value", 0.0));
+                m_processor.setSP404PadParam(bank, padId, param, val);
+            }
+        }
+        juce::String reply = "{\"ok\":true}\r\n";
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(reply.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" +
+            reply;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
     if (method == "POST" && path.startsWith("/rack")) {
         juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
         auto parsed = juce::JSON::parse(body);
@@ -921,6 +1035,31 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         return;
     }
 
+    if (method == "GET" && path.startsWith("/take/visual")) {
+        auto queryParam = path.fromFirstOccurrenceOf("id=", false, false);
+        if (queryParam.containsChar('&')) queryParam = queryParam.upToFirstOccurrenceOf("&", false, false);
+        queryParam = juce::URL::removeEscapeChars(queryParam);
+        auto htmlFile = m_processor.getTakeRecorder().getTakeVisualHtmlFile(queryParam);
+        if (htmlFile.existsAsFile()) {
+            juce::String content = htmlFile.loadFileAsString();
+            juce::String response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html; charset=utf-8\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(content.getNumBytesAsUTF8()) + "\r\n"
+                "Connection: close\r\n\r\n" + content;
+            client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+            return;
+        }
+        juce::String notFoundJson = "{\"error\":\"Visual HTML file not found for take\"}";
+        juce::String response =
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(notFoundJson.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + notFoundJson;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
     if (method == "DELETE" && path.startsWith("/take")) {
         auto queryParam = path.fromFirstOccurrenceOf("id=", false, false);
         if (queryParam.containsChar('&')) queryParam = queryParam.upToFirstOccurrenceOf("&", false, false);
@@ -948,6 +1087,7 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
 
         auto wavFile = m_processor.getTakeRecorder().getTakeAudioFile(takeId);
         auto metaFile = m_processor.getTakeRecorder().getTakeMetaFile(takeId);
+        auto visHtmlFile = m_processor.getTakeRecorder().getTakeVisualHtmlFile(takeId);
 
         if (!wavFile.existsAsFile()) {
             juce::String errJson = "{\"ok\":false,\"error\":\"Audio take WAV file not found: " + takeId + "\"}";
@@ -971,6 +1111,9 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
                  .withParameter("description", desc)
                  .withParameter("visualizerPreset", preset)
                  .withParameter("metadata", metaStr);
+        if (visHtmlFile.existsAsFile()) {
+            url = url.withFileToUpload("visualHtml", visHtmlFile, "text/html");
+        }
 
         auto stream = url.createInputStream(juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inPostData)
                                                 .withNumRedirectsToFollow(5)
@@ -981,7 +1124,19 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
             serverReply = stream->readEntireStreamAsString();
             uploadSuccess = true;
         } else {
-            serverReply = "{\"ok\":false,\"error\":\"Failed to connect to publishing endpoint: " + targetUrl + "\"}";
+            // Local fallback bundle when offline or testing without cloud endpoint
+            juce::DynamicObject::Ptr fallback = new juce::DynamicObject();
+            fallback->setProperty("ok", true);
+            fallback->setProperty("offlineBundle", true);
+            fallback->setProperty("takeId", takeId);
+            fallback->setProperty("title", title.isEmpty() ? takeId : title);
+            fallback->setProperty("publicUrl", "https://johnwalls.studio/studio");
+            fallback->setProperty("localHtmlUrl", "file://" + visHtmlFile.getFullPathName());
+            fallback->setProperty("localAudioUrl", "file://" + wavFile.getFullPathName());
+            fallback->setProperty("visualizerPreset", preset);
+            fallback->setProperty("message", "Audio take and SuperCollider visualizer bundled locally in takes directory.");
+            serverReply = juce::JSON::toString(juce::var(fallback.get()), false);
+            uploadSuccess = true;
         }
 
         juce::String response =
@@ -1004,11 +1159,13 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
         }
 
         juce::ChildProcess process;
-        juce::String cmd = "/bin/zsh -lc \"export PATH=\\\"$HOME/.nvm/versions/node/v24.2.0/bin:$PATH:/usr/local/bin:/opt/homebrew/bin\\\" && cd /Users/seanhalls/Desktop/sh/johnwalls_studio && node scripts/push-to-studio.mjs --url '" + deployUrl + "'\"";
+        juce::StringArray cmd { "/bin/zsh", "-lc",
+                                "export PATH=\"$HOME/.nvm/versions/node/v24.2.0/bin:$PATH:/usr/local/bin:/opt/homebrew/bin\" && cd /Users/seanhalls/Desktop/sh/johnwalls_studio && exec node scripts/push-to-studio.mjs \"$@\"",
+                                "push-to-studio", "--url", deployUrl };
         if (deployToken.isNotEmpty()) {
-            cmd += " --token '" + deployToken + "'";
+            cmd.add("--token");
+            cmd.add(deployToken);
         }
-
         bool started = process.start(cmd);
         if (started) {
             juce::String output = process.readAllProcessOutput();
@@ -1038,6 +1195,510 @@ void LocalTelemetryServer::handleConnection(std::unique_ptr<juce::StreamingSocke
             client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
             return;
         }
+    }
+
+    if (method == "GET" && (path.startsWith("/hardware/status") || path.startsWith("/card/status"))) {
+        juce::ChildProcess process;
+        juce::String pyCmd = "/bin/zsh -lc \"python3 /Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/hardware_sync.py --status\"";
+        bool started = process.start(pyCmd);
+        juce::String output = "";
+        if (started) {
+            output = process.readAllProcessOutput().trim();
+        }
+
+        auto parsed = juce::JSON::parse(output);
+        if (path.startsWith("/hardware/status")) {
+            juce::String json = parsed.isObject() ? juce::JSON::toString(parsed, false) : output;
+            if (json.isEmpty() || !parsed.isObject()) {
+                json = "{\"sp404\":{\"mounted\":false},\"rc600\":{\"mounted\":false},\"anyMounted\":false}";
+            }
+            juce::String response =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n" + corsHeaders +
+                "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+                "Connection: close\r\n\r\n" + json;
+            client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+            return;
+        }
+
+        // Backward-compatible /card/status synthesis
+        juce::DynamicObject::Ptr res = new juce::DynamicObject();
+        if (parsed.isObject()) {
+            auto spObj = parsed.getProperty("sp404", juce::var()).getDynamicObject();
+            auto rcObj = parsed.getProperty("rc600", juce::var()).getDynamicObject();
+            bool spMounted = spObj != nullptr && static_cast<bool>(spObj->getProperty("mounted"));
+            bool rcMounted = rcObj != nullptr && static_cast<bool>(rcObj->getProperty("mounted"));
+
+            if (spMounted) {
+                res->setProperty("mounted", true);
+                res->setProperty("mountPath", spObj->getProperty("mountPath"));
+                res->setProperty("volumeName", spObj->getProperty("volumeName"));
+                res->setProperty("freeBytes", spObj->getProperty("freeBytes"));
+                res->setProperty("totalBytes", spObj->getProperty("totalBytes"));
+                res->setProperty("sampleCount", spObj->getProperty("sampleCount"));
+                res->setProperty("hasRolandImport", spObj->getProperty("hasRolandImport"));
+                res->setProperty("hasRolandWave", false);
+                res->setProperty("hasNamedStems", false);
+            } else if (rcMounted) {
+                res->setProperty("mounted", true);
+                res->setProperty("mountPath", rcObj->getProperty("mountPath"));
+                res->setProperty("volumeName", rcObj->getProperty("volumeName"));
+                res->setProperty("freeBytes", rcObj->getProperty("freeBytes"));
+                res->setProperty("totalBytes", rcObj->getProperty("totalBytes"));
+                res->setProperty("stemCount", rcObj->getProperty("trackCount"));
+                res->setProperty("hasRolandImport", false);
+                res->setProperty("hasRolandWave", rcObj->getProperty("hasRolandWave"));
+                res->setProperty("hasNamedStems", false);
+            } else {
+                res->setProperty("mounted", false);
+                res->setProperty("mountPath", "");
+                res->setProperty("volumeName", "");
+                res->setProperty("freeBytes", 0.0);
+                res->setProperty("totalBytes", 0.0);
+                res->setProperty("hasRolandImport", false);
+                res->setProperty("hasRolandWave", false);
+                res->setProperty("hasNamedStems", false);
+                res->setProperty("sampleCount", 0);
+                res->setProperty("stemCount", 0);
+            }
+        } else {
+            res->setProperty("mounted", false);
+            res->setProperty("mountPath", "");
+            res->setProperty("volumeName", "");
+            res->setProperty("freeBytes", 0.0);
+            res->setProperty("totalBytes", 0.0);
+            res->setProperty("hasRolandImport", false);
+            res->setProperty("hasRolandWave", false);
+            res->setProperty("hasNamedStems", false);
+            res->setProperty("sampleCount", 0);
+            res->setProperty("stemCount", 0);
+        }
+
+        juce::String json = juce::JSON::toString(juce::var(res.get()), false);
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && (path.startsWith("/hardware/sync") || path.startsWith("/card/export"))) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        juce::String target = "all";
+        juce::String customPath = "";
+        if (parsed.isObject()) {
+            if (parsed.hasProperty("target")) {
+                target = parsed.getProperty("target", "all").toString();
+            }
+            if (parsed.hasProperty("targetDir")) {
+                customPath = parsed.getProperty("targetDir", "").toString();
+            } else if (parsed.hasProperty("path")) {
+                customPath = parsed.getProperty("path", "").toString();
+            }
+        }
+
+        juce::ChildProcess process;
+        juce::StringArray pyCmd = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/hardware_sync.py");
+        pyCmd.add("--sync");
+        pyCmd.add("--target");
+        pyCmd.add(target);
+        if (customPath.isNotEmpty()) {
+            pyCmd.add("--path");
+            pyCmd.add(customPath);
+        }
+
+        bool started = process.start(pyCmd);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput().trim();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        auto resJson = juce::JSON::parse(output);
+        juce::String jsonOut = resJson.isObject() ? juce::JSON::toString(resJson, false) : output;
+        if (jsonOut.isEmpty()) {
+            jsonOut = exitCode == 0 ? "{\"ok\":true,\"message\":\"Hardware sync completed successfully.\"}"
+                                   : "{\"ok\":false,\"error\":\"Hardware sync failed or exited with an error.\"}";
+        }
+
+        juce::String response =
+            "HTTP/1.1 " + juce::String(exitCode == 0 ? "200 OK" : "400 Bad Request") + "\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(jsonOut.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + jsonOut;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "GET" && path.startsWith("/bounce/status")) {
+        juce::ChildProcess process;
+        juce::String pyCmd = "/bin/zsh -lc \"python3 /Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/als_group_bouncer.py --status\"";
+        bool started = process.start(pyCmd);
+        juce::String output = "";
+        if (started) {
+            output = process.readAllProcessOutput();
+        }
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(output.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + output;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/bounce/open")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+        juce::String target = "";
+        if (parsed.isObject() && parsed.hasProperty("target")) {
+            target = parsed.getProperty("target", "").toString();
+        }
+
+        juce::ChildProcess process;
+        juce::StringArray pyCmd = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/als_group_bouncer.py");
+        pyCmd.add("--open");
+        pyCmd.add(target);
+        bool started = process.start(pyCmd);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        juce::DynamicObject::Ptr resObj = new juce::DynamicObject();
+        resObj->setProperty("ok", exitCode == 0);
+        resObj->setProperty("output", output);
+
+        juce::String json = juce::JSON::toString(juce::var(resObj.get()), false);
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "GET" && path.startsWith("/bounce/list")) {
+        juce::String alsPath = "";
+        if (path.contains("?als=")) {
+            alsPath = juce::URL::removeEscapeChars(path.fromFirstOccurrenceOf("?als=", false, false)).trim();
+        }
+
+        juce::ChildProcess process;
+        juce::StringArray pyCmd = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/als_group_bouncer.py");
+        pyCmd.add("--list");
+        if (alsPath.isNotEmpty()) {
+            pyCmd.add("--als");
+            pyCmd.add(alsPath);
+        }
+
+        bool started = process.start(pyCmd);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        juce::DynamicObject::Ptr resObj = new juce::DynamicObject();
+        resObj->setProperty("ok", exitCode == 0);
+        resObj->setProperty("als", alsPath);
+        resObj->setProperty("output", output);
+
+        juce::String json = juce::JSON::toString(juce::var(resObj.get()), false);
+        juce::String response =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(json.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + json;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+
+    if (method == "POST" && path.startsWith("/bounce/group")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+
+        juce::String alsPath = "";
+        juce::String groups = "";
+        juce::String track = "";
+        int memory = 0;
+        int rc600Track = 0;
+        int autoSong = 0;
+
+        if (parsed.isObject()) {
+            if (parsed.hasProperty("als")) alsPath = parsed.getProperty("als", "").toString().trim();
+            if (parsed.hasProperty("groups")) groups = parsed.getProperty("groups", "").toString().trim();
+            if (parsed.hasProperty("track")) track = parsed.getProperty("track", "").toString().trim();
+            if (parsed.hasProperty("memory")) memory = static_cast<int>(parsed.getProperty("memory", 0));
+            if (parsed.hasProperty("rc600Track")) rc600Track = static_cast<int>(parsed.getProperty("rc600Track", 0));
+            if (parsed.hasProperty("autoSong")) autoSong = static_cast<int>(parsed.getProperty("autoSong", 0));
+        }
+
+        juce::StringArray pyArgs = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/als_group_bouncer.py");
+        if (alsPath.isNotEmpty()) {
+            pyArgs.add("--als");
+            pyArgs.add(alsPath);
+        }
+        if (autoSong > 0) {
+            pyArgs.add("--auto-song");
+            pyArgs.add(juce::String(autoSong));
+        } else {
+            if (groups.isNotEmpty()) {
+                pyArgs.add("--groups");
+                pyArgs.add(groups);
+            }
+            if (track.isNotEmpty()) {
+                pyArgs.add("--track");
+                pyArgs.add(track);
+            }
+            if (memory > 0 && rc600Track > 0) {
+                pyArgs.add("--patch-rc600");
+                pyArgs.add("--memory");
+                pyArgs.add(juce::String(memory));
+                pyArgs.add("--rc600-track");
+                pyArgs.add(juce::String(rc600Track));
+            }
+        }
+
+        juce::ChildProcess process;
+        bool started = process.start(pyArgs);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput().trim();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        auto resJson = juce::JSON::parse(output);
+        juce::String jsonOut = resJson.isObject() ? juce::JSON::toString(resJson, false) : output;
+        if (jsonOut.isEmpty()) {
+            jsonOut = exitCode == 0 ? "{\"ok\":true,\"message\":\"Bounce completed successfully.\"}"
+                                   : "{\"ok\":false,\"error\":\"Bounce process failed.\"}";
+        }
+
+        juce::String response =
+            "HTTP/1.1 " + juce::String(exitCode == 0 ? "200 OK" : "400 Bad Request") + "\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(jsonOut.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + jsonOut;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "GET" && path.startsWith("/sp404/finder/list")) {
+        juce::String track = "";
+        juce::String als = "";
+        if (path.contains("?")) {
+            auto query = path.fromFirstOccurrenceOf("?", false, false);
+            juce::StringArray params;
+            params.addTokens(query, "&", "");
+            for (auto& p : params) {
+                if (p.startsWith("track=")) track = juce::URL::removeEscapeChars(p.fromFirstOccurrenceOf("track=", false, false)).trim();
+                if (p.startsWith("als=")) als = juce::URL::removeEscapeChars(p.fromFirstOccurrenceOf("als=", false, false)).trim();
+            }
+        }
+
+        juce::StringArray pyArgs = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/sp404_sample_finder.py");
+        pyArgs.add("--find");
+        pyArgs.add(track);
+        pyArgs.add("--json");
+        if (als.isNotEmpty()) {
+            pyArgs.add("--als");
+            pyArgs.add(als);
+        }
+
+        juce::ChildProcess process;
+        bool started = process.start(pyArgs);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput().trim();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        juce::String response =
+            "HTTP/1.1 " + juce::String(exitCode == 0 ? "200 OK" : "400 Bad Request") + "\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(output.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + output;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/sp404/finder/grab")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+
+        juce::String track = "";
+        int instance = 1;
+        juce::String bank = "A";
+        int pad = 1;
+        juce::String als = "";
+        bool patchCard = false;
+        juce::String label = "";
+
+        if (parsed.isObject()) {
+            track = parsed.getProperty("track", "").toString().trim();
+            instance = static_cast<int>(parsed.getProperty("instance", 1));
+            bank = parsed.getProperty("bank", "A").toString().trim();
+            pad = static_cast<int>(parsed.getProperty("pad", 1));
+            als = parsed.getProperty("als", "").toString().trim();
+            patchCard = static_cast<bool>(parsed.getProperty("patchCard", false));
+            label = parsed.getProperty("label", "").toString().trim();
+        }
+
+        juce::StringArray pyArgs = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/sp404_sample_finder.py");
+        pyArgs.add("--grab");
+        pyArgs.add(track);
+        pyArgs.add("--instance");
+        pyArgs.add(juce::String(instance));
+        pyArgs.add("--bank");
+        pyArgs.add(bank);
+        pyArgs.add("--pad");
+        pyArgs.add(juce::String(pad));
+        if (als.isNotEmpty()) {
+            pyArgs.add("--als");
+            pyArgs.add(als);
+        }
+        if (patchCard) pyArgs.add("--patch-card");
+        pyArgs.add("--json");
+
+        juce::ChildProcess process;
+        bool started = process.start(pyArgs);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput().trim();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        auto resJson = juce::JSON::parse(output);
+        if (resJson.isObject() && static_cast<bool>(resJson.getProperty("ok", false))) {
+            juce::String filePath = resJson.getProperty("filePath", "").toString();
+            juce::File f(filePath);
+            if (f.existsAsFile()) {
+                juce::WavAudioFormat wavFormat;
+                std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(f.createInputStream().release(), true));
+                if (reader && reader->lengthInSamples > 0) {
+                    const int bankIdx = std::clamp(static_cast<int>(bank.toUpperCase()[0] - 'A'), 0, 9);
+                    const int numChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
+                    const int numSamples = static_cast<int>(reader->lengthInSamples);
+                    juce::AudioBuffer<float> sampleBuf(numChannels, numSamples);
+                    reader->read(&sampleBuf, 0, numSamples, 0, true, numChannels > 1);
+                    m_processor.getSP404Engine().loadCustomSample(
+                        bankIdx, pad,
+                        sampleBuf.getReadPointer(0),
+                        numChannels > 1 ? sampleBuf.getReadPointer(1) : nullptr,
+                        static_cast<size_t>(numSamples),
+                        static_cast<float>(reader->sampleRate),
+                        label.isNotEmpty() ? label.toStdString() : track.toStdString(),
+                        0.0f, 1.0f, 0.0f, false, false, 0
+                    );
+                }
+            }
+        }
+
+        juce::String response =
+            "HTTP/1.1 " + juce::String(exitCode == 0 ? "200 OK" : "400 Bad Request") + "\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(output.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + output;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
+    }
+
+    if (method == "POST" && path.startsWith("/sp404/finder/pattern")) {
+        juce::String body = request.fromFirstOccurrenceOf("\r\n\r\n", false, false);
+        auto parsed = juce::JSON::parse(body);
+
+        juce::String track = "";
+        juce::String bank = "A";
+        int count = 12;
+        juce::String als = "";
+        bool patchCard = false;
+
+        if (parsed.isObject()) {
+            track = parsed.getProperty("track", "").toString().trim();
+            bank = parsed.getProperty("bank", "A").toString().trim();
+            count = static_cast<int>(parsed.getProperty("count", 12));
+            als = parsed.getProperty("als", "").toString().trim();
+            patchCard = static_cast<bool>(parsed.getProperty("patchCard", false));
+        }
+
+        juce::StringArray pyArgs = makeLoginPythonCommand("/Users/seanhalls/Desktop/sh/johnwalls_studio/scripts/sp404_sample_finder.py");
+        pyArgs.add("--pattern");
+        pyArgs.add(track);
+        pyArgs.add("--bank");
+        pyArgs.add(bank);
+        pyArgs.add("--count");
+        pyArgs.add(juce::String(count));
+        if (als.isNotEmpty()) {
+            pyArgs.add("--als");
+            pyArgs.add(als);
+        }
+        if (patchCard) pyArgs.add("--patch-card");
+        pyArgs.add("--json");
+
+        juce::ChildProcess process;
+        bool started = process.start(pyArgs);
+        juce::String output = "";
+        int exitCode = 0;
+        if (started) {
+            output = process.readAllProcessOutput().trim();
+            exitCode = static_cast<int>(process.getExitCode());
+        }
+
+        auto resJson = juce::JSON::parse(output);
+        if (resJson.isObject() && static_cast<bool>(resJson.getProperty("ok", false))) {
+            const int bankIdx = std::clamp(static_cast<int>(bank.toUpperCase()[0] - 'A'), 0, 9);
+            auto padsVar = resJson.getProperty("pads", juce::var());
+            if (padsVar.isArray()) {
+                juce::WavAudioFormat wavFormat;
+                for (int i = 0; i < padsVar.size(); ++i) {
+                    auto padObj = padsVar[i];
+                    if (!padObj.isObject()) continue;
+                    int padNum = static_cast<int>(padObj.getProperty("pad", i + 1));
+                    juce::String fp = padObj.getProperty("filePath", "").toString();
+                    juce::String plabel = padObj.getProperty("label", "").toString();
+                    juce::File f(fp);
+                    if (f.existsAsFile()) {
+                        std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(f.createInputStream().release(), true));
+                        if (reader && reader->lengthInSamples > 0) {
+                            const int numChannels = juce::jlimit(1, 2, static_cast<int>(reader->numChannels));
+                            const int numSamples = static_cast<int>(reader->lengthInSamples);
+                            juce::AudioBuffer<float> sampleBuf(numChannels, numSamples);
+                            reader->read(&sampleBuf, 0, numSamples, 0, true, numChannels > 1);
+                            m_processor.getSP404Engine().loadCustomSample(
+                                bankIdx, padNum,
+                                sampleBuf.getReadPointer(0),
+                                numChannels > 1 ? sampleBuf.getReadPointer(1) : nullptr,
+                                static_cast<size_t>(numSamples),
+                                static_cast<float>(reader->sampleRate),
+                                plabel.toStdString(),
+                                0.0f, 1.0f, 0.0f, false, false, 0
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        juce::String response =
+            "HTTP/1.1 " + juce::String(exitCode == 0 ? "200 OK" : "400 Bad Request") + "\r\n"
+            "Content-Type: application/json\r\n" + corsHeaders +
+            "Content-Length: " + juce::String(output.getNumBytesAsUTF8()) + "\r\n"
+            "Connection: close\r\n\r\n" + output;
+        client->write(response.toRawUTF8(), static_cast<int>(response.getNumBytesAsUTF8()));
+        return;
     }
 
     // 404

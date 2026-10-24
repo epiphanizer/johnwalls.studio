@@ -39,19 +39,19 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
   const amps = pedals.filter((p) => p.type === 'mesa' || p.type === 'vox');
 
   return (
-    <div className="flex-1 overflow-x-auto overflow-y-auto p-6 flex flex-col justify-between bg-[#0a0c12]">
+    <div className="flex-1 overflow-x-auto overflow-y-auto p-5 flex flex-col justify-between bg-[#090b10] text-slate-200 font-sans">
       {/* Top Signal Flow Info & Active Rules Banner */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-mono text-slate-400 overflow-x-auto">
+        <div className="flex items-center gap-2 text-xs text-slate-400 overflow-x-auto">
           <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Signal Chain:</span>
-          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[11px]">
-            Ableton In
+          <span className="px-2 py-0.5 rounded bg-[#11141f] border border-[#222838] text-slate-300 text-xs font-semibold">
+            Live In
           </span>
           <ArrowRight size={12} className="text-slate-600" />
 
           {ampPlacement === 'inbound' && amps.length > 0 && (
             <>
-              <span className="px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/80 font-bold text-[11px]">
+              <span className="px-2 py-0.5 rounded bg-rose-950/60 text-rose-300 border border-rose-800/80 font-bold text-xs">
                 [PRE-FX] {amps.map((a) => a.title).join(', ')}
               </span>
               <ArrowRight size={12} className="text-slate-600" />
@@ -61,10 +61,10 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
           {stompboxes.map((p) => (
             <React.Fragment key={p.id}>
               <span
-                className={`px-2 py-0.5 rounded text-[11px] font-mono border ${
+                className={`px-2 py-0.5 rounded text-xs font-semibold border ${
                   p.bypassed
-                    ? 'bg-slate-900 text-slate-600 border-slate-800 line-through'
-                    : 'bg-slate-800/80 text-white border-slate-700'
+                    ? 'bg-[#0f121a] text-slate-500 border-[#1d2230] line-through'
+                    : 'bg-[#151926] text-white border-[#293247] shadow-sm'
                 }`}
               >
                 {p.title}
@@ -75,14 +75,14 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
 
           {ampPlacement === 'outbound' && amps.length > 0 && (
             <>
-              <span className="px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/80 font-bold text-[11px]">
+              <span className="px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/80 font-bold text-xs">
                 [OUTBOUND] {amps.map((a) => a.title).join(', ')}
               </span>
               <ArrowRight size={12} className="text-slate-600" />
             </>
           )}
 
-          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 text-[11px]">
+          <span className="px-2 py-0.5 rounded bg-[#11141f] border border-[#222838] text-slate-300 text-xs font-semibold">
             Master Out
           </span>
         </div>
@@ -93,10 +93,10 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
             <button
               type="button"
               onClick={onOpenLibrary}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#e6af2e]/15 border border-[#e6af2e]/40 hover:bg-[#e6af2e]/25 text-[11px] font-mono text-[#e6af2e] hover:text-white transition font-bold"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#e6af2e]/15 border border-[#e6af2e]/40 hover:bg-[#e6af2e]/25 text-xs text-[#e6af2e] hover:text-white transition font-bold shadow-sm"
               title="Open Pedal & Amplifier Library"
             >
-              <FolderOpen size={12} />
+              <FolderOpen size={13} />
               <span>Pedal Library</span>
             </button>
           )}
@@ -106,9 +106,9 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
             <button
               type="button"
               onClick={onToggleAmpPlacement}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] font-mono text-slate-300 hover:text-white transition"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#11141f] border border-[#222838] hover:border-slate-700 text-xs text-slate-300 hover:text-white transition font-semibold"
             >
-              <ArrowLeftRight size={12} className="text-[#e6af2e]" />
+              <ArrowLeftRight size={13} className="text-[#e6af2e]" />
               Placement: {ampPlacement === 'outbound' ? 'POST-EFFECTS (Outbound)' : 'PRE-EFFECTS (Inbound)'}
             </button>
           )}
@@ -120,7 +120,7 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
         {/* Section 1: Pre-FX Amps (if placement is inbound) */}
         {ampPlacement === 'inbound' && amps.length > 0 && (
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-mono text-rose-400 font-bold border-b border-slate-800 pb-1">
+            <div className="flex items-center justify-between text-xs text-rose-400 font-bold border-b border-slate-800 pb-1">
               <span>INBOUND AMPLIFIER STAGE (PRE-EFFECTS)</span>
             </div>
             <div className="flex flex-wrap items-center gap-4">
@@ -142,9 +142,9 @@ export const PedalBoardCanvas: React.FC<PedalBoardCanvasProps> = React.memo(({
 
         {/* Section 2: Stompbox Pedal Chain */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 border-b border-slate-800 pb-1">
-            <span className="font-semibold text-slate-300">EFFECTS STOMPBOX CHAIN</span>
-            <span className="text-slate-500 text-[10px]">{stompboxes.length} active pedals</span>
+          <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800/80 pb-1 font-sans">
+            <span className="font-bold text-slate-200 uppercase tracking-wider">Effects Stompbox Chain</span>
+            <span className="text-slate-500 font-mono text-[11px]">{stompboxes.length} active pedals</span>
           </div>
 
           <div className="flex items-center gap-6 py-2">

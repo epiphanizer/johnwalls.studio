@@ -1,0 +1,469 @@
+#!/usr/bin/env python3
+"""
+jw - Terminal-Driven CLI & Agent Tool for johnwalls.studio
+
+Communicates directly over /tmp/johnwalls.sock (Unix Domain Socket) or HTTP fallback
+to query telemetry, trigger pads, configure pedals, export manifests, and control takes.
+"""
+
+import sys
+import os
+import socket
+import json
+import argparse
+import urllib.request
+import urllib.error
+
+SOCKET_PATH = "/tmp/johnwalls.sock"
+FALLBACK_URL = "http://127.0.0.1:3012"
+
+def send_rpc(method: str, params: dict = None, request_id: int = 1) -> dict:
+    req = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params or {},
+        "id": request_id
+    }
+    payload = json.dumps(req) + "\n"
+
+    # Attempt Unix Domain Socket first
+    if os.path.exists(SOCKET_PATH):
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(2.0)
+            s.connect(SOCKET_PATH)
+            s.sendall(payload.encode("utf-8"))
+
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+                if b"\n" in data:
+                    break
+            s.close()
+            raw = b"".join(chunks).decode("utf-8").strip()
+            if raw:
+                return json.loads(raw)
+        except Exception as e:
+            pass
+
+    # Fallback to local HTTP server
+    try:
+        url = f"{FALLBACK_URL}/{method.replace('.', '/')}"
+        req_data = json.dumps(params or {}).encode("utf-8")
+        http_req = urllib.request.Request(
+            url,
+            data=req_data if params else None,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(http_req, timeout=2.0) as resp:
+            data = resp.read().decode("utf-8")
+            return {"result": json.loads(data) if data else {"ok": True}}
+    except Exception as e:
+        return {"error": {"message": f"Could not connect to johnwalls.studio plugin: {e}"}}
+
+def format_db(linear: float) -> str:
+    if linear <= 0.0001:
+        return "-inf dB"
+    import math
+    db = 20.0 * math.log10(linear)
+    return f"{db:.1f} dB"
+
+def cmd_status(args):
+    resp = send_rpc("status")
+    if "error" in resp:
+        print(f"Error: {resp['error'].get('message', 'Unknown error')}", file=sys.stderr)
+        sys.exit(1)
+
+    data = resp.get("result", {})
+    if args.json:
+        print(json.dumps(data, indent=2))
+        return
+
+    print("══════════════════════════════════════════════════════════════════")
+    print(" 🎛️  JOHNWALLS.STUDIO · LIVE TELEMETRY & WORKSTATION STATE")
+    print("══════════════════════════════════════════════════════════════════")
+    bpm = data.get("bpm", 120.0)
+    state = data.get("state", "UNKNOWN")
+    track = data.get("trackName", "Track")
+    rms = data.get("rms", 0.0)
+    kick_rms = data.get("kickRms", 0.0)
+    snare_rms = data.get("snareRms", 0.0)
+
+    print(f"  Track:        {track}")
+    print(f"  BPM:          {bpm:.1f}")
+    print(f"  Rhythm State: \033[1;32m{state}\033[0m")
+    print(f"  RMS Levels:   Master {format_db(rms)} | Kick {format_db(kick_rms)} | Snare {format_db(snare_rms)}")
+    print("──────────────────────────────────────────────────────────────────")
+
+    sp_resp = send_rpc("sp404.state")
+    if "result" in sp_resp:
+        sp = sp_resp["result"]
+        hold = sp.get("hold", False)
+        transpose = sp.get("globalTranspose", 0.0)
+        mfx = sp.get("activeMfx", 0)
+        pads = sp.get("pads", [])
+        loaded_count = sum(1 for p in pads if p.get("isLoaded", False))
+
+        hold_str = "\033[1;32mON\033[0m" if hold else "\033[2mOFF\033[0m"
+        print(f"  SP-404:       Hold [{hold_str}] | Transpose [{transpose:+.1f} st] | MFX [{mfx}] | Loaded Pads [{loaded_count}/{len(pads)}]")
+
+    print("══════════════════════════════════════════════════════════════════")
+
+def cmd_pad(args):
+    sub = args.pad_action
+    if sub == "trigger":
+        bank = args.bank.upper()
+        pad = args.pad
+        vel = args.velocity
+        transpose = args.transpose
+        resp = send_rpc("sp404.trigger", {"bank": bank, "pad": pad, "velocity": vel, "transpose": transpose})
+        if args.json:
+            print(json.dumps(resp))
+        else:
+            if "error" in resp:
+                print(f"Error: {resp['error']['message']}", file=sys.stderr)
+            else:
+                print(f"Triggered Pad [{bank}{pad:02d}] (vel: {vel}, transpose: {transpose:+.1f} st)")
+
+    elif sub == "release":
+        bank = args.bank.upper()
+        pad = args.pad
+        resp = send_rpc("sp404.release", {"bank": bank, "pad": pad})
+        if args.json:
+            print(json.dumps(resp))
+        else:
+            print(f"Released Pad [{bank}{pad:02d}]")
+
+    elif sub == "hold":
+        mode = args.mode.lower()
+        if mode == "toggle":
+            resp = send_rpc("sp404.hold", {"toggle": True})
+        elif mode in ("on", "1", "true"):
+            resp = send_rpc("sp404.hold", {"enabled": True})
+        else:
+            resp = send_rpc("sp404.hold", {"enabled": False})
+
+        if args.json:
+            print(json.dumps(resp))
+        else:
+            res = resp.get("result", {})
+            state_str = "ON" if res.get("hold") else "OFF"
+            print(f"SP-404 Hold Mode: {state_str}")
+
+    elif sub == "stop":
+        resp = send_rpc("sp404.stop")
+        if args.json:
+            print(json.dumps(resp))
+        else:
+            print("Stopped all playing pads.")
+
+    elif sub == "label":
+        bank = args.bank.upper()
+        pad = args.pad
+        label = args.label
+        resp = send_rpc("sp404.label", {"bank": bank, "pad": pad, "label": label})
+        if args.json:
+            print(json.dumps(resp))
+        else:
+            print(f"Updated Pad [{bank}{pad:02d}] Label: \"{label}\"")
+
+    elif sub == "transpose":
+        st = args.semitones
+        resp = send_rpc("sp404.transpose", {"semitones": st})
+        if args.json:
+            print(json.dumps(resp))
+        else:
+            print(f"Global SP-404 Transpose set to: {st:+.1f} semitones")
+
+def cmd_sp404(args):
+    sub = args.sp404_action
+    if sub == "state":
+        resp = send_rpc("sp404.state")
+        if args.json:
+            print(json.dumps(resp.get("result", {}), indent=2))
+            return
+        data = resp.get("result", {})
+        pads = data.get("pads", [])
+        banks = {}
+        for p in pads:
+            b = p.get("bank", 0)
+            banks.setdefault(b, []).append(p)
+
+        bank_names = ["A (Decay)", "B (Conviction)", "C (Poetry)", "D (Gratitude)", "E (Joint Queen)", "F (Stash Daddy)", "G (Auxiliary)"]
+        print("══════════════════════════════════════════════════════════════════")
+        print(" 🎹  SP-404 SAMPLER BANKS & PADS")
+        print("══════════════════════════════════════════════════════════════════")
+        for b_idx in sorted(banks.keys()):
+            b_label = bank_names[b_idx] if b_idx < len(bank_names) else f"Bank {chr(65+b_idx)}"
+            print(f"\n▶ {b_label}:")
+            for p in sorted(banks[b_idx], key=lambda x: x.get("padId", 0)):
+                pad_id = p.get("padId", 0)
+                label = p.get("label", "EMPTY")
+                frames = p.get("sampleFrames", 0)
+                loaded = "✓" if p.get("isLoaded") else "·"
+                print(f"   [{pad_id:02d}] {loaded} {label:<18} ({frames} frames)")
+        print("══════════════════════════════════════════════════════════════════")
+
+    elif sub == "find":
+        from sp404_sample_finder import find_track_clips, AlsProject, get_ableton_status
+        st = get_ableton_status()
+        als = args.als or (st["activeDocument"] if (st.get("activeDocumentExists") and not st.get("isDefaultSet")) else (st["recentProjects"][0] if st.get("recentProjects") else None))
+        if not als:
+            print("Error: No Ableton project specified or detected.", file=sys.stderr)
+            sys.exit(1)
+        proj = AlsProject(als)
+        info, err = find_track_clips(proj, args.track)
+        if err:
+            print(f"Error: {err}", file=sys.stderr)
+            sys.exit(1)
+        if args.json:
+            print(json.dumps({"ok": True, "data": info}, indent=2))
+        else:
+            print(f"\nSP-404 SAMPLE FINDER: TRACK \"{info['track']}\" ({info['bpm']} BPM)")
+            print(f"Total Splits: {info['totalClips']} (Distinct Shapes: {info['distinctSplitForms']})\n")
+            print(f"{'Inst':<5} {'Start (Beat)':<13} {'Start (Time)':<13} {'Duration':<11} {'Peak':<8} {'Repeats':<9} {'Source File'}")
+            print("-" * 88)
+            for inst in info["instances"]:
+                audible = " " if inst["isAudible"] else "*"
+                rep = f"x{inst['repeatCount']}" if inst["repeatCount"] > 1 else "1"
+                print(f"#{inst['instance']:<4}{audible} {inst['startBeat']:<13.2f} {inst['startTimeSec']:<13.2f}s {inst['durationSec']:<10.2f}s {inst['peak']:<8.3f} {rep:<9} {inst['sourceFilename']}")
+
+    elif sub == "grab":
+        from sp404_sample_finder import grab_sample, get_ableton_status
+        st = get_ableton_status()
+        als = args.als or (st["activeDocument"] if (st.get("activeDocumentExists") and not st.get("isDefaultSet")) else (st["recentProjects"][0] if st.get("recentProjects") else None))
+        res = grab_sample(als, args.track, args.instance, bank=args.bank, pad=args.pad, patch_card=args.patch_card)
+        if args.json:
+            print(json.dumps(res, indent=2))
+        elif res.get("ok"):
+            print(f"\nSP-404 SAMPLE EXTRACTED & SAVED:")
+            print(f"  Track:           {res['track']} (Instance #{res['instance']})")
+            print(f"  Target Pad:      Bank {res['bank']} Pad {res['padId']}")
+            print(f"  Duration:        {res['durationSec']}s ({res['durationBeats']} beats)")
+            print(f"  Peak:            {res['peak']}")
+            print(f"  Saved File:      {res['filePath']}")
+            if res.get("cardPatched"):
+                print(f"  Roland SD Card:  PATCHED -> {res['cardPath']}")
+        else:
+            print(f"Error: {res.get('error')}", file=sys.stderr)
+            sys.exit(1)
+
+    elif sub == "pattern":
+        from sp404_sample_finder import make_pattern_kit, get_ableton_status
+        st = get_ableton_status()
+        als = args.als or (st["activeDocument"] if (st.get("activeDocumentExists") and not st.get("isDefaultSet")) else (st["recentProjects"][0] if st.get("recentProjects") else None))
+        res = make_pattern_kit(als, args.track, bank=args.bank, max_pads=args.count, patch_card=args.patch_card)
+        if args.json:
+            res_summary = dict(res)
+            res_summary["pads"] = [{k: v for k, v in p.items() if k != "wavBase64"} for p in res.get("pads", [])]
+            print(json.dumps(res_summary, indent=2))
+        elif res.get("ok"):
+            print(f"\nSP-404 PATTERN CHOP KIT CREATED:")
+            print(f"  Track:           {res['track']}")
+            print(f"  Target Bank:     Bank {res['bank']} (Pads 1..{res['padCount']})")
+            print(f"  Tempo:           {res['bpm']} BPM")
+            print(f"  Pattern Length:  {res['totalDurationSec']}s ({res['totalDurationBeats']} beats)")
+            print(f"  Pattern File:    {res['patternFile']}")
+            for p in res.get("pads", []):
+                print(f"  - Pad {p['pad']:02d}: \"{p['label']}\" ({p['durationSec']:.2f}s) -> {os.path.basename(p['filePath'])}")
+        else:
+            print(f"Error: {res.get('error')}", file=sys.stderr)
+            sys.exit(1)
+
+def cmd_rack(args):
+    sub = args.rack_action
+    if sub == "add":
+        resp = send_rpc("rack.add", {"type": args.type, "id": args.name})
+        print(f"Added pedal {args.name} ({args.type})")
+    elif sub == "remove":
+        resp = send_rpc("rack.remove", {"id": args.name})
+        print(f"Removed pedal {args.name}")
+    elif sub == "bypass":
+        mode = args.mode.lower()
+        bypassed = mode in ("on", "1", "true")
+        resp = send_rpc("rack.bypass", {"id": args.name, "bypassed": bypassed})
+        print(f"Pedal {args.name} bypass: {bypassed}")
+    elif sub == "param":
+        resp = send_rpc("rack.param", {"id": args.name, "param": args.param, "value": args.value})
+        print(f"Set {args.name}.{args.param} = {args.value}")
+
+def cmd_take(args):
+    sub = args.take_action
+    if sub == "start":
+        resp = send_rpc("take.start", {"track": args.track, "preset": args.preset})
+        print("Started take recording.")
+    elif sub == "stop":
+        resp = send_rpc("take.stop")
+        print("Stopped take recording.")
+
+def cmd_manifest(args):
+    name = args.name or "session"
+    resp = send_rpc("manifest.export", {"name": name})
+    if "result" in resp:
+        path = resp["result"].get("path")
+        print(f"Exported declarative session manifest to:\n  \033[1;36m{path}\033[0m")
+    else:
+        print(f"Error: {resp.get('error')}")
+
+def cmd_raw(args):
+    payload = json.loads(args.json_str)
+    method = payload.get("method", "status")
+    params = payload.get("params", {})
+    req_id = payload.get("id", 1)
+    resp = send_rpc(method, params, req_id)
+    print(json.dumps(resp, indent=2))
+
+def main():
+    parser = argparse.ArgumentParser(prog="jw", description="johnwalls.studio terminal & AI control plane")
+    parser.add_argument("-j", "--json", action="store_true", help="Output raw JSON")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # status
+    p_status = subparsers.add_parser("status", help="Print live telemetry & engine state")
+    p_status.set_defaults(func=cmd_status)
+
+    # pad
+    p_pad = subparsers.add_parser("pad", help="SP-404 pad operations")
+    p_pad_sub = p_pad.add_subparsers(dest="pad_action", required=True)
+
+    p_pad_trig = p_pad_sub.add_parser("trigger", help="Trigger a pad")
+    p_pad_trig.add_argument("bank", help="Bank letter (A-G)")
+    p_pad_trig.add_argument("pad", type=int, help="Pad number (1-16)")
+    p_pad_trig.add_argument("--velocity", "--vel", type=float, default=1.0, help="Velocity 0.0-1.0 or 1-127")
+    p_pad_trig.add_argument("--transpose", type=float, default=0.0, help="Semitone offset")
+
+    p_pad_rel = p_pad_sub.add_parser("release", help="Release a pad")
+    p_pad_rel.add_argument("bank", help="Bank letter (A-G)")
+    p_pad_rel.add_argument("pad", type=int, help="Pad number (1-16)")
+
+    p_pad_hold = p_pad_sub.add_parser("hold", help="Toggle or set hold mode")
+    p_pad_hold.add_argument("mode", nargs="?", default="toggle", choices=["toggle", "on", "off"])
+
+    p_pad_stop = p_pad_sub.add_parser("stop", help="Stop all playing pads")
+
+    p_pad_label = p_pad_sub.add_parser("label", help="Set pad label")
+    p_pad_label.add_argument("bank", help="Bank letter (A-G)")
+    p_pad_label.add_argument("pad", type=int, help="Pad number (1-16)")
+    p_pad_label.add_argument("label", help="New label text")
+
+    p_pad_trans = p_pad_sub.add_parser("transpose", help="Set global transpose semitones")
+    p_pad_trans.add_argument("semitones", type=float, help="Semitones offset (-24 to +24)")
+
+    p_pad.set_defaults(func=cmd_pad)
+
+    # sp404
+    p_sp = subparsers.add_parser("sp404", help="SP-404 workstation commands")
+    p_sp_sub = p_sp.add_subparsers(dest="sp404_action", required=True)
+    p_sp_state = p_sp_sub.add_parser("state", help="Dump all banks and pads")
+
+    p_sp_find = p_sp_sub.add_parser("find", help="Find split waveforms and clips on track")
+    p_sp_find.add_argument("track", help="Track name (e.g. 'Sean Beatbox', 'Chop Sample')")
+    p_sp_find.add_argument("--als", default="", help="Path or index to ALS project")
+
+    p_sp_grab = p_sp_sub.add_parser("grab", help="Grab nth instance of split form & load to pad")
+    p_sp_grab.add_argument("track", help="Track name")
+    p_sp_grab.add_argument("instance", type=int, help="Nth instance (1-indexed)")
+    p_sp_grab.add_argument("--bank", "-b", default="A", help="SP-404 target bank (A-J)")
+    p_sp_grab.add_argument("--pad", "-p", type=int, default=1, help="SP-404 target pad (1-12)")
+    p_sp_grab.add_argument("--als", default="", help="Path or index to ALS project")
+    p_sp_grab.add_argument("--patch-card", action="store_true", help="Patch to mounted Roland card")
+
+    p_sp_pat = p_sp_sub.add_parser("pattern", help="Make 12-pad pattern chop kit across bank")
+    p_sp_pat.add_argument("track", help="Track name")
+    p_sp_pat.add_argument("--bank", "-b", default="A", help="SP-404 target bank (A-J)")
+    p_sp_pat.add_argument("--count", "-c", type=int, default=12, help="Number of chops (default 12)")
+    p_sp_pat.add_argument("--als", default="", help="Path or index to ALS project")
+    p_sp_pat.add_argument("--patch-card", action="store_true", help="Patch to mounted Roland card")
+
+    p_sp.set_defaults(func=cmd_sp404)
+
+    # rack
+    p_rack = subparsers.add_parser("rack", help="DSP pedal rack operations")
+    p_rack_sub = p_rack.add_subparsers(dest="rack_action", required=True)
+
+    p_rack_add = p_rack_sub.add_parser("add", help="Add pedal to rack")
+    p_rack_add.add_argument("type", help="Pedal type (delay, filter, drive, ducker, mesa, vox)")
+    p_rack_add.add_argument("name", help="Instance ID/name")
+
+    p_rack_rm = p_rack_sub.add_parser("remove", help="Remove pedal from rack")
+    p_rack_rm.add_argument("name", help="Instance ID/name")
+
+    p_rack_byp = p_rack_sub.add_parser("bypass", help="Set pedal bypass")
+    p_rack_byp.add_argument("name", help="Instance ID/name")
+    p_rack_byp.add_argument("mode", choices=["on", "off", "true", "false"])
+
+    p_rack_param = p_rack_sub.add_parser("param", help="Set pedal parameter")
+    p_rack_param.add_argument("name", help="Instance ID/name")
+    p_rack_param.add_argument("param", help="Parameter name")
+    p_rack_param.add_argument("value", type=float, help="Numeric value")
+
+    p_rack.set_defaults(func=cmd_rack)
+
+    # take
+    p_take = subparsers.add_parser("take", help="Take recorder commands")
+    p_take_sub = p_take.add_subparsers(dest="take_action", required=True)
+    p_take_start = p_take_sub.add_parser("start", help="Start take recording")
+    p_take_start.add_argument("--track", default="Track", help="Track name")
+    p_take_start.add_argument("--preset", default="supercollider-lissajous", help="Visual preset")
+    p_take_stop = p_take_sub.add_parser("stop", help="Stop take recording")
+    p_take.set_defaults(func=cmd_take)
+
+    # manifest
+    p_manifest = subparsers.add_parser("manifest", help="Declarative session manifest operations")
+    p_manifest.add_argument("name", nargs="?", default="current_session", help="Session name")
+    p_manifest.set_defaults(func=cmd_manifest)
+
+def cmd_export(args):
+    from export_all_hardware import run_export_all
+    sys.exit(run_export_all(target=args.target, song_filter=args.song))
+
+def cmd_sync(args):
+    from hardware_sync import sync_all, sync_sp404, sync_rc600, detect_hardware
+    if args.status:
+        st = detect_hardware()
+        print(json.dumps(st, indent=2))
+        return
+    if args.target == "sp404":
+        res = sync_sp404()
+    elif args.target == "rc600":
+        res = sync_rc600()
+    else:
+        res = sync_all()
+    print(json.dumps(res, indent=2))
+
+def cmd_raw(args):
+    payload = json.loads(args.json_str)
+    method = payload.get("method", "status")
+    params = payload.get("params", {})
+    req_id = payload.get("id", 1)
+    resp = send_rpc(method, params, req_id)
+    print(json.dumps(resp, indent=2))
+
+def main():
+    parser = argparse.ArgumentParser(prog="jw", description="johnwalls.studio terminal & AI control plane")
+    parser.add_argument("-j", "--json", action="store_true", help="Output raw JSON")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # export
+    p_exp = subparsers.add_parser("export", help="Master hardware stem export engine (RC-600 & SP-404)")
+    p_exp.add_argument("--target", choices=["all", "rc600", "sp404"], default="all", help="Target hardware system")
+    p_exp.add_argument("--song", type=int, choices=range(1, 7), default=None, help="Process single song (1-6)")
+    p_exp.set_defaults(func=cmd_export)
+
+    # sync
+    p_sync = subparsers.add_parser("sync", help="Synchronize audio stems to mounted RC-600 & SP-404 hardware")
+    p_sync.add_argument("--target", choices=["all", "rc600", "sp404"], default="all", help="Target hardware to synchronize")
+    p_sync.add_argument("--status", action="store_true", help="Report hardware detection status")
+    p_sync.set_defaults(func=cmd_sync)
+
+    args = parser.parse_args()
+    if hasattr(args, "func"):
+        args.func(args)
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()

@@ -13,7 +13,7 @@ export interface VerticalSliderProps {
   onChange: (val: number) => void;
 }
 
-export const VerticalSlider: React.FC<VerticalSliderProps> = ({
+export const VerticalSlider: React.FC<VerticalSliderProps> = React.memo(({
   label,
   value,
   min,
@@ -160,4 +160,4 @@ export const VerticalSlider: React.FC<VerticalSliderProps> = ({
       </span>
     </div>
   );
-};
+});

@@ -164,15 +164,25 @@ class StateBridge {
   }
 
   public executeSuperColliderAction(
-    action: 'freeAll' | 'testTone' | 'reboot' | 'runVisual' | 'stopVisual' | 'osc',
+    action: 'freeAll' | 'testTone' | 'reboot' | 'runVisual' | 'openVisualWindow' | 'toggleVisual' | 'stopVisual' | 'osc',
     payload?: string
   ): Promise<SuperColliderServerStatus> {
     return this.scRequest('superColliderAction', { action, payload }, '/supercollider/action', { action, payload });
   }
 
   /** Run an sclang patch (visuals) that is wired to the plugin's scsynth and /state/* OSC stream. */
-  public runVisual(code: string): Promise<SuperColliderServerStatus> {
-    return this.executeSuperColliderAction('runVisual', code);
+  public runVisual(presetOrCode: string = 'supercollider-lissajous'): Promise<SuperColliderServerStatus> {
+    return this.executeSuperColliderAction('runVisual', presetOrCode);
+  }
+
+  /** Launch or pop out native SuperCollider visual window via sclang. */
+  public openVisualWindow(presetOrCode: string = 'supercollider-lissajous'): Promise<SuperColliderServerStatus> {
+    return this.executeSuperColliderAction('openVisualWindow', presetOrCode);
+  }
+
+  /** Toggle the native SuperCollider visual window on or off. */
+  public toggleVisual(presetOrCode: string = 'supercollider-lissajous'): Promise<SuperColliderServerStatus> {
+    return this.executeSuperColliderAction('toggleVisual', presetOrCode);
   }
 
   public stopVisual(): Promise<SuperColliderServerStatus> {
@@ -385,6 +395,10 @@ class StateBridge {
     return `${this.activeBaseUrl}/take/audio?id=${encodeURIComponent(takeId)}`;
   }
 
+  public getVisualTakeUrl(takeId: string): string {
+    return `${this.activeBaseUrl}/take/visual?id=${encodeURIComponent(takeId)}`;
+  }
+
   public async deleteTake(takeId: string): Promise<boolean> {
     try {
       const res = await this.tryFetch(`/take?id=${encodeURIComponent(takeId)}`, {
@@ -486,6 +500,288 @@ class StateBridge {
       error: 'Could not reach local telemetry server. Please run "npm run push" or "make push" in your terminal.'
     };
   }
+
+  public async getHardwareStatus(): Promise<HardwareStatus> {
+    try {
+      const res = await this.tryFetch('/hardware/status');
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('Hardware status check error:', err);
+    }
+    return {
+      sp404: { mounted: false, mountPath: '', volumeName: '', freeBytes: 0, totalBytes: 0, sampleCount: 0 },
+      rc600: { mounted: false, mountPath: '', volumeName: '', freeBytes: 0, totalBytes: 0, trackCount: 0 },
+      anyMounted: false,
+      error: 'Telemetry server unavailable or hardware not detected.'
+    };
+  }
+
+  public async syncHardware(options?: { target?: 'all' | 'sp404' | 'rc600'; path?: string }): Promise<HardwareSyncResult> {
+    try {
+      const res = await this.tryFetch('/hardware/sync', {
+        method: 'POST',
+        body: JSON.stringify(options || { target: 'all' })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const errData = await res.json().catch(() => null);
+      return {
+        ok: false,
+        bytesWritten: 0,
+        message: errData?.error || 'Hardware sync failed',
+        error: errData?.error || 'Hardware sync failed'
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        bytesWritten: 0,
+        message: 'Could not connect to telemetry server',
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+
+  public async getAbletonStatus(): Promise<any> {
+    try {
+      const res = await this.tryFetch('/bounce/status');
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('getAbletonStatus error:', err);
+    }
+    return { liveRunning: false, activeDocument: null, recentProjects: [] };
+  }
+
+  public async openAlsProject(target: string): Promise<{ ok: boolean; output: string }> {
+    try {
+      const res = await this.tryFetch('/bounce/open', {
+        method: 'POST',
+        body: JSON.stringify({ target })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('openAlsProject error:', err);
+    }
+    return { ok: false, output: 'Could not connect to telemetry server.' };
+  }
+
+  public async listAlsProject(alsPath?: string): Promise<{ ok: boolean; als: string; output: string }> {
+    try {
+      const q = alsPath ? `?als=${encodeURIComponent(alsPath)}` : '';
+      const res = await this.tryFetch(`/bounce/list${q}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('listAlsProject error:', err);
+    }
+    return {
+      ok: false,
+      als: alsPath || '',
+      output: 'Could not connect to telemetry server or parse .als project.'
+    };
+  }
+
+  public async bounceAlsGroup(options: { als?: string; groups?: string; track?: string; memory?: number; rc600Track?: number; autoSong?: number }): Promise<any> {
+    try {
+      const res = await this.tryFetch('/bounce/group', {
+        method: 'POST',
+        body: JSON.stringify(options)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const errData = await res.json().catch(() => null);
+      return {
+        ok: false,
+        error: errData?.error || errData?.message || 'Bounce failed'
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+
+  public async findSp404Samples(track: string, alsPath?: string): Promise<any> {
+    try {
+      const q = `?track=${encodeURIComponent(track)}${alsPath ? `&als=${encodeURIComponent(alsPath)}` : ''}`;
+      const res = await this.tryFetch(`/sp404/finder/list${q}`);
+      if (res.ok) {
+        return await res.json();
+      }
+      return await res.json().catch(() => ({ ok: false, error: 'Failed to inspect track split waveforms.' }));
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  public async grabSp404Sample(options: {
+    track: string;
+    instance: number;
+    bank?: string;
+    pad?: number;
+    als?: string;
+    patchCard?: boolean;
+    label?: string;
+  }): Promise<any> {
+    try {
+      const res = await this.tryFetch('/sp404/finder/grab', {
+        method: 'POST',
+        body: JSON.stringify(options)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return await res.json().catch(() => ({ ok: false, error: 'Failed to grab split instance sample.' }));
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  public async makeSp404Pattern(options: {
+    track: string;
+    bank?: string;
+    count?: number;
+    als?: string;
+    patchCard?: boolean;
+  }): Promise<any> {
+    try {
+      const res = await this.tryFetch('/sp404/finder/pattern', {
+        method: 'POST',
+        body: JSON.stringify(options)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      return await res.json().catch(() => ({ ok: false, error: 'Failed to create SP-404 pattern chop kit.' }));
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  public async getCardStatus(): Promise<CardStatus> {
+    try {
+      const res = await this.tryFetch('/card/status');
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn('Card status check error:', err);
+    }
+    return {
+      mounted: false,
+      mountPath: '',
+      volumeName: '',
+      freeBytes: 0,
+      totalBytes: 0,
+      hasRolandImport: false,
+      hasRolandWave: false,
+      hasNamedStems: false,
+      sampleCount: 0,
+      stemCount: 0,
+      error: 'Telemetry server unavailable or card not detected.'
+    };
+  }
+
+  public async exportToCard(options?: { targetDir?: string }): Promise<CardExportResult> {
+    try {
+      const res = await this.tryFetch('/card/export', {
+        method: 'POST',
+        body: JSON.stringify(options || {})
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      const errData = await res.json().catch(() => null);
+      return {
+        ok: false,
+        mountPath: '',
+        samplesExported: 0,
+        stemsExported: 0,
+        rc600TracksExported: 0,
+        bytesWritten: 0,
+        message: errData?.error || 'Export failed',
+        error: errData?.error || 'Export failed'
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        mountPath: '',
+        samplesExported: 0,
+        stemsExported: 0,
+        rc600TracksExported: 0,
+        bytesWritten: 0,
+        message: 'Could not connect to telemetry server',
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+}
+
+export interface HardwareDeviceStatus {
+  mounted: boolean;
+  mountPath: string;
+  volumeName: string;
+  freeBytes: number;
+  totalBytes: number;
+  sampleCount?: number;
+  trackCount?: number;
+  hasRolandSmpl?: boolean;
+  hasRolandImport?: boolean;
+  hasRolandWave?: boolean;
+}
+
+export interface HardwareStatus {
+  sp404: HardwareDeviceStatus;
+  rc600: HardwareDeviceStatus;
+  anyMounted: boolean;
+  error?: string;
+}
+
+export interface HardwareSyncResult {
+  ok: boolean;
+  target?: string;
+  mountPath?: string;
+  samplesExported?: number;
+  tracksExported?: number;
+  bytesWritten: number;
+  message: string;
+  sp404?: { ok: boolean; mountPath: string; samplesExported: number; bytesWritten: number; message: string; error?: string };
+  rc600?: { ok: boolean; mountPath: string; tracksExported: number; bytesWritten: number; message: string; error?: string };
+  error?: string;
+}
+
+export interface CardStatus {
+  mounted: boolean;
+  mountPath: string;
+  volumeName: string;
+  freeBytes: number;
+  totalBytes: number;
+  hasRolandImport: boolean;
+  hasRolandWave: boolean;
+  hasNamedStems: boolean;
+  sampleCount: number;
+  stemCount: number;
+  error?: string;
+}
+
+export interface CardExportResult {
+  ok: boolean;
+  mountPath: string;
+  samplesExported: number;
+  stemsExported: number;
+  rc600TracksExported: number;
+  bytesWritten: number;
+  message: string;
+  error?: string;
 }
 
 export interface AudioTakeMetadata {
@@ -505,6 +801,22 @@ export interface AudioTakeMetadata {
   peakDb: number;
   rmsDb: number;
   recordedAt: string;
+  visualizerPreset?: string;
+  visualManifest?: {
+    preset: string;
+    visualizerName: string;
+    engine: string;
+    colorPalette: string;
+    sampleCount: number;
+    timeline?: Array<{
+      t: number;
+      peak: number;
+      rms: number;
+      bpm: number;
+      bar: number;
+      ppq: number;
+    }>;
+  };
 }
 
 export interface TakeRecorderStatus {

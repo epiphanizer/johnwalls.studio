@@ -14,10 +14,14 @@ import {
   Send,
   Volume2,
   Music,
-  Cpu
+  Cpu,
+  Tv,
+  Sparkles
 } from 'lucide-react';
 import { StateTelemetry, TerminalEntry } from '../types';
 import { TerminalLogLine } from './TerminalLogLine';
+import { stateBridge } from '../utils/stateBridge';
+import { getMidiNoteName } from '../utils/commandExecutor';
 
 export interface StateWorkstationProps {
   telemetry: StateTelemetry;
@@ -28,6 +32,7 @@ export interface StateWorkstationProps {
   onSwitchToSP404?: () => void;
   onOpenRoutingModal?: () => void;
   onOpenCaptureDispatch?: () => void;
+  onOpenVisualizer?: () => void;
 }
 
 const QUICK_COMMANDS = [
@@ -44,15 +49,7 @@ const QUICK_COMMANDS = [
   'help'
 ];
 
-function getMidiNoteName(noteNum?: number): string {
-  if (!noteNum || noteNum <= 0 || noteNum > 127) return '—';
-  const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-  const octave = Math.floor(noteNum / 12) - 1;
-  const note = notes[noteNum % 12];
-  return `${note}${octave}`;
-}
-
-export const StateWorkstation: React.FC<StateWorkstationProps> = ({
+export const StateWorkstation: React.FC<StateWorkstationProps> = React.memo(({
   telemetry,
   logs = [],
   onExecuteCommand,
@@ -60,7 +57,8 @@ export const StateWorkstation: React.FC<StateWorkstationProps> = ({
   onSwitchToPedalLab,
   onSwitchToSP404,
   onOpenRoutingModal,
-  onOpenCaptureDispatch
+  onOpenCaptureDispatch,
+  onOpenVisualizer
 }) => {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
@@ -316,6 +314,131 @@ export const StateWorkstation: React.FC<StateWorkstationProps> = ({
         </div>
       </div>
 
+      {/* SuperCollider Server & Visualizer Cockpit Deck */}
+      <div className="bg-[#0a0d16] border-b border-slate-800/80 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0 select-none">
+        {/* Left: Server Telemetry */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Cpu size={13} className="text-[#e6af2e]" />
+            <span className="font-bold text-[11px] text-white">SUPERCOLLIDER DSP:</span>
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${
+                telemetry.supercollider?.isRunning
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                  : 'bg-slate-900 text-slate-500 border-slate-800'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  telemetry.supercollider?.isRunning
+                    ? 'bg-emerald-400 shadow-[0_0_6px_#10b981]'
+                    : 'bg-slate-600'
+                }`}
+              />
+              <span>
+                {telemetry.supercollider?.isRunning
+                  ? `PORT ${telemetry.supercollider.port} (ONLINE)`
+                  : 'OFFLINE'}
+              </span>
+            </span>
+          </div>
+
+          {/* Sclang Visual Window status */}
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${
+                telemetry.supercollider?.visualRunning
+                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/40 shadow-sm'
+                  : 'bg-slate-900 text-slate-500 border-slate-800'
+              }`}
+            >
+              <Tv size={11} className={telemetry.supercollider?.visualRunning ? 'animate-pulse text-amber-400' : 'text-slate-600'} />
+              <span>
+                {telemetry.supercollider?.visualRunning
+                  ? `SCLANG WINDOW ACTIVE (UDP ${telemetry.supercollider.langPort})`
+                  : 'SCLANG VISUAL IDLE'}
+              </span>
+            </span>
+          </div>
+
+          {telemetry.supercollider?.isRunning && (
+            <div className="hidden lg:flex items-center gap-2 text-[10.5px] font-mono text-slate-400">
+              <span>Synths: <strong className="text-white">{telemetry.supercollider.numSynths}</strong></span>
+              <span className="text-slate-700">·</span>
+              <span>Nodes: <strong className="text-white">{telemetry.supercollider.numNodes}</strong></span>
+              <span className="text-slate-700">·</span>
+              <span>CPU: <strong className="text-cyan-300">{telemetry.supercollider.avgCPU.toFixed(1)}%</strong></span>
+              <span className="text-slate-700">·</span>
+              <span>OSC Sent: <strong className="text-purple-300">{telemetry.supercollider.oscSent}</strong></span>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Pop Up Native SC Window */}
+          <button
+            type="button"
+            onClick={() => {
+              stateBridge.toggleVisual();
+              onExecuteCommand?.(telemetry.supercollider?.visualRunning ? 'sc stopvisual' : 'sc visual');
+            }}
+            className={`px-2.5 py-1 rounded text-xs font-bold font-mono transition flex items-center gap-1.5 border shadow-sm ${
+              telemetry.supercollider?.visualRunning
+                ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/40'
+                : 'bg-[#e6af2e]/15 hover:bg-[#e6af2e]/30 text-[#e6af2e] border-[#e6af2e]/50'
+            }`}
+            title="Pop up or close native SuperCollider macOS GUI Window"
+          >
+            <Tv size={12} className={telemetry.supercollider?.visualRunning ? 'text-rose-400' : 'text-[#e6af2e]'} />
+            <span>{telemetry.supercollider?.visualRunning ? 'CLOSE SC WINDOW' : 'POP UP SC VISUALIZER'}</span>
+          </button>
+
+          {/* Open In-Plugin Visualizer */}
+          {onOpenVisualizer && (
+            <button
+              type="button"
+              onClick={onOpenVisualizer}
+              className="px-2.5 py-1 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 font-mono text-xs font-bold transition flex items-center gap-1.5"
+              title="Open real-time interactive in-plugin visualizer modal"
+            >
+              <Activity size={12} className="text-cyan-400" />
+              <span>IN-PLUGIN VISUALS</span>
+            </button>
+          )}
+
+          {/* Boot/Kill Server */}
+          <button
+            type="button"
+            onClick={() => {
+              if (telemetry.supercollider?.isRunning) {
+                stateBridge.killSuperCollider();
+                onExecuteCommand?.('sc kill');
+              } else {
+                stateBridge.bootSuperCollider();
+                onExecuteCommand?.('sc boot');
+              }
+            }}
+            className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-mono text-xs border border-slate-800 transition"
+          >
+            {telemetry.supercollider?.isRunning ? 'KILL SERVER' : 'BOOT SERVER'}
+          </button>
+
+          {/* 440Hz Test Tone */}
+          <button
+            type="button"
+            onClick={() => {
+              stateBridge.sendSuperColliderAction('testTone');
+              onExecuteCommand?.('sc test');
+            }}
+            className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-300 font-mono text-xs border border-slate-800 transition"
+            title="Send 440Hz test sine tone to scsynth"
+          >
+            TEST TONE
+          </button>
+        </div>
+      </div>
+
       {/* 2. Terminal Header Bar & Quick Actions */}
       <div className="bg-[#0d0f17] border-b border-slate-800/80 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
         <div className="flex items-center gap-2">
@@ -482,4 +605,4 @@ export const StateWorkstation: React.FC<StateWorkstationProps> = ({
       </form>
     </div>
   );
-};
+});

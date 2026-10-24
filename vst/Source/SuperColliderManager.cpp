@@ -440,7 +440,7 @@ bool SuperColliderManager::boot(int port) {
     m_lastReplyMs.store(0);
 
     const std::string script = "exec " + shQuote(m_binaryPath) + " -u " + std::to_string(port)
-        + " -a 1024 -m 131072 -z 64 -l 32 -i 2 -o 2 > " + shQuote(m_serverLogFile.getFullPathName().toStdString())
+        + " -a 1024 -m 131072 -z 64 -l 32 -i 0 -o 2 > " + shQuote(m_serverLogFile.getFullPathName().toStdString())
         + " 2>&1 < /dev/null";
 
     m_server = std::make_unique<juce::ChildProcess>();
@@ -481,6 +481,16 @@ bool SuperColliderManager::kill() {
     return true;
 }
 
+std::string SuperColliderManager::getDefaultVisualCode(const std::string& preset) {
+    if (preset == "supercollider-vector-cascade" || preset == "vector-cascade") {
+        return kVisualPatchVectorCascade;
+    }
+    if (preset == "supercollider-spectral-waterfall" || preset == "spectral-waterfall") {
+        return kVisualPatchSpectralWaterfall;
+    }
+    return kVisualPatchLissajous;
+}
+
 bool SuperColliderManager::launchVisual(const std::string& code) {
     // m_mutex is held by the caller.
     stopVisual();
@@ -494,7 +504,17 @@ bool SuperColliderManager::launchVisual(const std::string& code) {
         m_lastError = "Could not open a local UDP socket for OSC.";
         return false;
     }
-    if (code.empty()) {
+
+    std::string visualCode = code;
+    if (visualCode.empty() || visualCode == "default" ||
+        visualCode == "supercollider-lissajous" || visualCode == "lissajous" ||
+        visualCode == "supercollider-vector-cascade" || visualCode == "vector-cascade" ||
+        visualCode == "supercollider-spectral-waterfall" || visualCode == "spectral-waterfall" ||
+        visualCode == "golden-mandala") {
+        visualCode = getDefaultVisualCode(visualCode);
+    }
+
+    if (visualCode.empty()) {
         m_lastError = "Visual patch is empty.";
         return false;
     }
@@ -508,7 +528,7 @@ bool SuperColliderManager::launchVisual(const std::string& code) {
     replaceAll("%PORTFILE%", "\"" + m_langPortFile.getFullPathName().toStdString() + "\"");
 
     // GUI/drawing code must run on the AppClock; errors are reported to the log instead of killing sclang.
-    const std::string program = preamble + "\nAppClock.sched(0, {\n try {\n" + code
+    const std::string program = preamble + "\nAppClock.sched(0, {\n try {\n" + visualCode
         + "\n } { |e| e.reportError };\n nil\n});\n";
     if (!m_visualCodeFile.replaceWithText(juce::String(program))) {
         m_lastError = "Could not write " + m_visualCodeFile.getFullPathName().toStdString();
@@ -558,9 +578,25 @@ bool SuperColliderManager::executeAction(const std::string& action, const std::s
         kill();
         return boot(port);
     }
-    if (action == "runVisual") {
+    if (action == "runVisual" || action == "openVisualWindow") {
+        if (!m_isRunning.load() && !m_isBooting.load()) {
+            boot(m_port.load());
+        }
         std::lock_guard<std::mutex> lock(m_mutex);
         return launchVisual(payload);
+    }
+    if (action == "toggleVisual") {
+        if (m_visualRunning.load()) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            stopVisual();
+            return true;
+        } else {
+            if (!m_isRunning.load() && !m_isBooting.load()) {
+                boot(m_port.load());
+            }
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return launchVisual(payload);
+        }
     }
     if (action == "stopVisual") {
         std::lock_guard<std::mutex> lock(m_mutex);

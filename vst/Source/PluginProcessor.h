@@ -4,6 +4,7 @@
 #include "johnwalls/pedal_rack.hpp"
 #include "johnwalls/feature_extractor.hpp"
 #include "LocalTelemetryServer.h"
+#include "UnixDomainSocketServer.h"
 #include "ReactiveMidiEngine.h"
 #include "SP404Engine.h"
 #include "AudioTakeRecorder.h"
@@ -89,8 +90,18 @@ public:
     void releaseSP404Pad(int bankIndex, int padId);
     void setSP404Routing(const juce::String& order, bool bypassed);
     void setSP404Param(const juce::String& paramName, float value);
+    void setSP404GlobalTranspose(float semitones) { m_sp404Engine.setGlobalTranspose(semitones); }
+    void setSP404PadParam(int bank, int padId, const juce::String& param, float value) {
+        m_sp404Engine.setPadParam(bank, padId, param.toStdString(), value);
+    }
+    void setSP404PadLabel(int bank, int padId, const juce::String& label) {
+        m_sp404Engine.setPadLabel(bank, padId, label.toStdString());
+    }
+    void setSP404Hold(bool enabled) { m_sp404Engine.setHoldMode(enabled); }
+    void loadWallsDevinePresetSamplesAsync();
 
     LocalTelemetryServer& getTelemetryServer() { return m_telemetryServer; }
+    UnixDomainSocketServer& getSocketServer() { return m_socketServer; }
     AudioTakeRecorder& getTakeRecorder() noexcept { return m_takeRecorder; }
     const AudioTakeRecorder& getTakeRecorder() const noexcept { return m_takeRecorder; }
     float getCurrentBpm() const noexcept { return m_currentBpm.load(std::memory_order_relaxed); }
@@ -101,6 +112,7 @@ private:
     SP404Engine m_sp404Engine;
     AudioTakeRecorder m_takeRecorder;
     LocalTelemetryServer m_telemetryServer;
+    UnixDomainSocketServer m_socketServer;
 
     std::string m_instanceId;
     std::string m_trackName{"Track"};
