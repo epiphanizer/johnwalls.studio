@@ -1329,7 +1329,7 @@ export const App: React.FC = () => {
       const targetUrl = tokens[1] || 'https://johnwalls.studio/api/johnwalls/deploy';
       addLog(
         'output',
-        `🚀 [1/3] Kicking off johnwalls.studio auto-push & build pipeline...\n` +
+        `[1/3] Kicking off johnwalls.studio auto-push & build pipeline...\n` +
           `   Target endpoint: ${targetUrl}`
       );
       stateBridge
