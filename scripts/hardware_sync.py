@@ -89,7 +89,7 @@ def detect_hardware():
 
         entry_upper = entry.upper()
         # Boss RC-600 detection
-        if "RC-600" in entry_upper or "RC600" in entry_upper or "BOSS_RC" in entry_upper:
+        if "RC-600" in entry_upper or "RC600" in entry_upper or "BOSS" in entry_upper:
             rc600_target = full_path
             continue
 
@@ -109,7 +109,7 @@ def detect_hardware():
             continue
 
         # Check for RC-600 directory signatures
-        if os.path.isdir(os.path.join(full_path, "ROLAND", "DATA")) or os.path.isdir(os.path.join(full_path, "ROLAND", "WAVE", "001_1")):
+        if os.path.isdir(os.path.join(full_path, "ROLAND", "DATA")) or os.path.isdir(os.path.join(full_path, "ROLAND", "WAVE")):
             if not rc600_target:
                 rc600_target = full_path
                 continue
@@ -372,24 +372,36 @@ def sync_rc600(target_path=None):
     tracks_exported = 0
     bytes_written = 0
 
-    # Sync tracks for all 6 songs
-    for song_dir, pfx, rc_idx, _ in SONG_DEFINITIONS:
-        for trk_idx in range(1, 4):
-            mem_folder_name = f"{rc_idx:03d}_{trk_idx}"
-            mem_folder_path = os.path.join(wave_root, mem_folder_name)
-            os.makedirs(mem_folder_path, exist_ok=True)
-
-            dst_wav = os.path.join(mem_folder_path, f"{mem_folder_name}.WAV")
-
-            # Check pre-rendered 32-bit float source in Boss_RC600_Transfer
-            src_wav = os.path.join(RC600_SOURCE_WAVE_DIR, f"{rc_idx:02d}_{trk_idx}.WAV")
-
-            if os.path.exists(src_wav):
-                src_size = os.path.getsize(src_wav)
-                if not os.path.exists(dst_wav) or os.path.getsize(dst_wav) != src_size:
-                    shutil.copy2(src_wav, dst_wav)
-                    bytes_written += src_size
-                tracks_exported += 1
+    # Sync all staged tracks from Boss_RC600_Transfer/ROLAND/WAVE
+    if os.path.isdir(RC600_SOURCE_WAVE_DIR):
+        for root, _, files in os.walk(RC600_SOURCE_WAVE_DIR):
+            rel_dir = os.path.relpath(root, RC600_SOURCE_WAVE_DIR)
+            dst_dir = os.path.join(wave_root, rel_dir) if rel_dir != "." else wave_root
+            os.makedirs(dst_dir, exist_ok=True)
+            for f in files:
+                if f.upper().endswith(".WAV"):
+                    src_f = os.path.join(root, f)
+                    dst_f = os.path.join(dst_dir, f)
+                    src_size = os.path.getsize(src_f)
+                    if not os.path.exists(dst_f) or os.path.getsize(dst_f) != src_size:
+                        shutil.copy2(src_f, dst_f)
+                        bytes_written += src_size
+                    tracks_exported += 1
+    else:
+        # Fallback to SONG_DEFINITIONS
+        for song_dir, pfx, rc_idx, _ in SONG_DEFINITIONS:
+            for trk_idx in range(1, 4):
+                mem_folder_name = f"{rc_idx:03d}_{trk_idx}"
+                mem_folder_path = os.path.join(wave_root, mem_folder_name)
+                os.makedirs(mem_folder_path, exist_ok=True)
+                dst_wav = os.path.join(mem_folder_path, f"{mem_folder_name}.WAV")
+                src_wav = os.path.join(RC600_SOURCE_WAVE_DIR, f"{rc_idx:02d}_{trk_idx}.WAV")
+                if os.path.exists(src_wav):
+                    src_size = os.path.getsize(src_wav)
+                    if not os.path.exists(dst_wav) or os.path.getsize(dst_wav) != src_size:
+                        shutil.copy2(src_wav, dst_wav)
+                        bytes_written += src_size
+                    tracks_exported += 1
             else:
                 # If pre-rendered file is missing, convert from Named_Stems
                 trk_name_map = {1: "Trk1_Drums", 2: "Trk2_Bass", 3: "Trk3_Guitars_Other"}
